@@ -96,3 +96,9 @@ def compose_stack() -> Iterator[None]:
 def rtsp_base_url(compose_stack: None) -> str:
     """Base URL of the stack's MediaMTX server; append a path such as /test."""
     return f"rtsp://127.0.0.1:{RTSP_PORT}"
+
+
+@pytest.fixture(scope="session")
+def mqtt_address(compose_stack: None) -> tuple[str, int]:
+    """Host and port of the stack's Mosquitto broker, which allows anonymous clients."""
+    return ("127.0.0.1", MQTT_PORT)

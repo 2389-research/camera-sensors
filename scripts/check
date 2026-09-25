@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# ABOUTME: Canonical verification entry point for djev-sensors.
+# ABOUTME: Runs lint, format check, mypy, and tests; --live also runs end-to-end tests.
+set -euo pipefail
+
+usage() {
+  echo "Usage: $(basename "$0") [--live]" >&2
+}
+
+if [ "$#" -eq 0 ]; then
+  live=0
+elif [ "$#" -eq 1 ] && [ "$1" = "--live" ]; then
+  live=1
+else
+  usage
+  exit 2
+fi
+
+run_step() {
+  local description="$1"
+  shift
+  echo "==> ${description}"
+  if ! "$@"; then
+    echo "FAILED: ${description} (command: $*)" >&2
+    exit 1
+  fi
+}
+
+run_step "ruff check" uv run ruff check .
+run_step "ruff format check" uv run ruff format --check .
+run_step "mypy" uv run mypy djev_sensors
+run_step "unit and integration tests" uv run pytest tests/unit tests/integration -q
+
+if [ "${live}" -eq 1 ]; then
+  run_step "end-to-end tests" uv run pytest tests/e2e -q
+fi
+
+echo "All checks passed."

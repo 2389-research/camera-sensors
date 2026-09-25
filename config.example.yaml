@@ -1,0 +1,68 @@
+system:
+  mqtt:
+    host: mqtt.home
+    port: 1883
+    username: homeassistant
+    password_env: MQTT_PASSWORD
+
+    discovery_prefix: homeassistant
+    topic_prefix: djev-sensors
+    client_id: djev-sensors
+
+  model:
+    provider: lunaroute
+    model: djev
+
+    api_key_env: LUNAROUTE_API_KEY
+
+    timeout_seconds: 15
+
+    prompt_wrapper: |
+      Evaluate only the visible contents of the supplied camera frame.
+      Answer the requested binary condition based only on visible evidence.
+      Do not assume facts that cannot be seen.
+
+  inference:
+    max_concurrent_requests: 4
+
+  change_detection:
+    type: frame_difference
+    width: 320
+    pixel_delta_threshold: 20
+    blur: 5
+
+cameras:
+  garage:
+    rtsp: ${GARAGE_RTSP_URL}
+    fps: 1
+
+  backyard:
+    rtsp: ${BACKYARD_RTSP_URL}
+    fps: 1
+
+sensors:
+  car_in_garage:
+    name: Car in Garage
+    camera: garage
+
+    prompt: |
+      Is a car currently parked inside the garage?
+
+    device_class: occupancy
+
+    true_threshold: 0.80
+    change_threshold_pct: 2.5
+    cooldown_seconds: 10
+
+  gate_open:
+    name: Gate Open
+    camera: backyard
+
+    prompt: |
+      Is the backyard gate visibly open?
+
+    device_class: opening
+
+    true_threshold: 0.85
+    change_threshold_pct: 1.5
+    cooldown_seconds: 5

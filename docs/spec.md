@@ -31,7 +31,7 @@ enough visual change?
        ↓
    evaluate eligible sensors
        ↓
-   Djev + full-resolution frame
+   Djev + largest frame that fits LunaRoute
        ↓
    probability
        ↓
@@ -59,7 +59,7 @@ The system MUST:
 5. Compute one camera-level change score for each sampled frame.
 6. Allow each semantic sensor to have its own change threshold.
 7. Trigger one independent Djev request per eligible sensor.
-8. Send the full-resolution camera frame to Djev.
+8. Keep the full-resolution camera frame locally and send the largest image that fits LunaRoute's request limit to Djev.
 9. Convert Djev's Noul probability into Home Assistant binary state.
 10. Publish using Home Assistant MQTT Discovery.
 11. Publish useful inference metadata as entity attributes.
@@ -265,7 +265,7 @@ fps: 1
 
 means approximately one frame comparison each second.
 
-The full-resolution decoded frame MUST remain available for inference.
+The full-resolution decoded frame MUST remain available until inference is dispatched. The transport uses it at full size when the request fits; otherwise it resizes and JPEG-encodes only the transmitted image.
 
 A separate reduced frame is generated for change detection.
 
@@ -483,22 +483,21 @@ Conceptually the request is:
 {
   "model": "djev",
   "state": "",
-  "images": [
-    "data:image/jpeg;base64,..."
-  ],
   "questions": {
     "result": {
       "type": "noul",
-      "instructions": "<wrapper>\n\n<sensor prompt>"
+      "instructions": {
+        "text": "<wrapper>\n\n<sensor prompt>",
+        "image": "data:image/jpeg;base64,..."
+      }
     }
-  },
-  "options": {
-    "seed": 0
   }
 }
 ```
 
-Djev supports image state through inline PNG/JPEG/WebP data URLs.
+The verified LunaRoute `/v1/systemone` route accepts an image object in the question instructions. It rejects a top-level `images` field. This differs from Djev's direct API, so the wire format belongs only in the LunaRoute adapter.
+
+LunaRoute's measured request limit was about 48 KB on 2026-09-24/25, including base64 image text. The adapter MUST measure the serialized request and fit it under a conservative 45,000-byte budget. It SHOULD keep the source resolution when it fits, then reduce JPEG quality and dimensions until it does. It MUST record the sent width and height. If no usable image fits, it treats the evaluation as a model-path failure with a clear diagnostic. These limits may change and must be checked again during implementation.
 
 The application sends **one Djev request per sensor**, even when several sensors trigger from the same frame.
 
@@ -515,11 +514,13 @@ Define:
 ```python
 class ModelClient:
     async def evaluate_binary(
-        image: bytes,
+        image: FullResolutionFrame,
         instructions: str,
     ) -> BinaryJudgment:
         ...
 ```
+
+`FullResolutionFrame` here means the decoded frame at the camera's native pixel dimensions. The adapter may resize the transmitted image under the request-budget rule above.
 
 and implement:
 
@@ -527,7 +528,7 @@ and implement:
 LunaRouteDjevClient
 ```
 
-LunaRoute publicly describes its inference gateway as a single model-routing endpoint and as OpenAI-compatible, but the public material does not currently document a Djev-specific transport contract. Therefore the LunaRoute adapter must encapsulate and validate the actual Djev route rather than making the rest of the application depend on an assumed wire format.
+The working local `test.sh` establishes `POST https://gw.lunaroute.com/v1/systemone` for text questions. Prior live image probes in the neighboring `mm-decisions` project establish the image-object format and measured request limit above. The adapter MUST validate a fresh image response during implementation and keep these LunaRoute details out of camera, state, and MQTT code.
 
 No direct `api.djev.dev` fallback should occur silently.
 
@@ -752,9 +753,7 @@ online
 offline
 ```
 
-Each sensor has its own availability topic.
-
-Discovery configuration references that topic.
+Each sensor has its own availability topic. Discovery also references a shared service availability topic for MQTT Last Will. Both must be online for the entity to be available.
 
 Home Assistant MQTT binary sensors natively support availability topics and display the entity as unavailable when the configured unavailable payload is received.
 
@@ -784,7 +783,11 @@ Example:
   "unique_id": "djev_sensors_gate_open",
   "state_topic": "djev-sensors/gate_open/state",
   "json_attributes_topic": "djev-sensors/gate_open/attributes",
-  "availability_topic": "djev-sensors/gate_open/availability",
+  "availability": [
+    {"topic": "djev-sensors/gate_open/availability"},
+    {"topic": "djev-sensors/service/availability"}
+  ],
+  "availability_mode": "all",
   "payload_on": "ON",
   "payload_off": "OFF",
   "payload_available": "online",
@@ -798,7 +801,7 @@ Example:
 }
 ```
 
-Home Assistant MQTT binary sensors support `state_topic`, `json_attributes_topic`, `availability_topic`, `device_class`, and `unique_id`.
+Home Assistant MQTT binary sensors support `state_topic`, `json_attributes_topic`, an `availability` list with `availability_mode`, `device_class`, and `unique_id`.
 
 ---
 
@@ -814,7 +817,9 @@ After every completed inference, publish:
   "camera": "backyard",
   "model": "djev",
   "evaluated_at": "2026-09-25T19:32:17Z",
-  "latency_ms": 241
+  "latency_ms": 241,
+  "sent_width": 768,
+  "sent_height": 432
 }
 ```
 
@@ -975,6 +980,14 @@ async def evaluate(sensor, frame, change):
             instructions=compose_prompt(sensor),
         )
 
+    except InvalidModelResponse:
+        sensor.model_available = True
+        publish_availability_if_camera_online(sensor)
+        sensor.state = False
+        publish_state(sensor, "OFF")
+        publish_attributes(sensor, parse_error=True)
+        return
+
     except ModelError:
         sensor.model_available = False
         publish_availability(sensor, "offline")
@@ -983,18 +996,7 @@ async def evaluate(sensor, frame, change):
     sensor.model_available = True
     publish_availability_if_camera_online(sensor)
 
-    try:
-        p = validate_noul(result)
-    except InvalidModelResponse:
-        sensor.state = False
-
-        publish_state(sensor, "OFF")
-        publish_attributes(
-            sensor,
-            parse_error=True,
-        )
-
-        return
+    p = result.true_probability
 
     publish_attributes(
         sensor,
@@ -1264,11 +1266,9 @@ If two sensors qualify from the same frame:
 
 are generated.
 
-### Full-resolution inference
+### Inference image
 
-Change detection may use the reduced frame.
-
-Djev receives the corresponding full-resolution frame.
+Change detection may use the reduced frame. Inference uses the corresponding full-resolution decoded frame as its source. Djev receives it at full size when the request fits LunaRoute's budget; otherwise it receives the largest fitted JPEG. Attributes report the sent dimensions.
 
 ### Confidence band
 

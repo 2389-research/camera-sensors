@@ -862,6 +862,8 @@ def test_drain_also_waits_for_evaluations_started_while_draining() -> None:
         await settle()
 
         drain = asyncio.create_task(h.scheduler.drain())
+        # Let drain start waiting on gate's evaluation alone before porch's begins.
+        await settle()
         h.scheduler.on_change("street", new_frame(), 5.0)
         await settle()
         held_gate.release.set()

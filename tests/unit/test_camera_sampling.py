@@ -22,6 +22,7 @@ OTHER_URL = "rtsp://other-camera.test/stream"
 # Script steps besides a frame time (float) or an exception for the stream to raise.
 STOP: Final = "stop"  # set the stop event, then end the stream
 WAIT_FOR_STOP: Final = "wait_for_stop"  # block until stop is set, then yield a frame
+UNCONVERTIBLE: Final = "unconvertible"  # yield a frame whose BGR conversion fails
 
 Step = float | Exception | str
 # One connection: its steps, or the exception that opening the stream raises.
@@ -39,11 +40,34 @@ class ScriptExhausted(BaseException):
     """
 
 
+class ScriptedFrame:
+    """A decoded frame that records its time in `conversions` when converted."""
+
+    def __init__(
+        self, time: float, image: NDArray[np.uint8], conversions: list[float]
+    ) -> None:
+        self._time = time
+        self._image = image
+        self._conversions = conversions
+
+    def to_bgr(self) -> NDArray[np.uint8]:
+        self._conversions.append(self._time)
+        return self._image
+
+
+class UnconvertibleFrame:
+    """A decoded frame whose conversion to BGR fails."""
+
+    def to_bgr(self) -> NDArray[np.uint8]:
+        raise StreamError("frame would not convert")
+
+
 class ScriptedSource:
     """Frame-source factory that plays scripted connections for each URL.
 
     Each call opens the URL's next scripted connection. A float step sets the
-    fake clock to that time, then yields a new frame.
+    fake clock to that time, then yields a new frame; converting that frame
+    returns the array recorded in `frames` and logs its time in `conversions`.
     """
 
     def __init__(
@@ -55,13 +79,14 @@ class ScriptedSource:
         self.opened: list[str] = []
         self.closed: list[str] = []
         self.frames: dict[float, NDArray[np.uint8]] = {}
+        self.conversions: list[float] = []
         self._connections = {url: iter(script) for url, script in scripts.items()}
         self._stop_event = stop_event
 
     def clock(self) -> float:
         return self.now
 
-    def __call__(self, url: str) -> Iterator[NDArray[np.uint8]]:
+    def __call__(self, url: str) -> Iterator[ScriptedFrame | UnconvertibleFrame]:
         self.opened.append(url)
         connection = next(self._connections[url], None)
         if connection is None:
@@ -70,7 +95,9 @@ class ScriptedSource:
             raise connection
         return self._play(url, connection)
 
-    def _play(self, url: str, steps: Sequence[Step]) -> Iterator[NDArray[np.uint8]]:
+    def _play(
+        self, url: str, steps: Sequence[Step]
+    ) -> Iterator[ScriptedFrame | UnconvertibleFrame]:
         try:
             for step in steps:
                 if step == STOP:
@@ -78,15 +105,18 @@ class ScriptedSource:
                     return
                 if step == WAIT_FOR_STOP:
                     self._stop_event.wait()
-                    yield np.zeros((2, 2, 3), dtype=np.uint8)
+                    blank = np.zeros((2, 2, 3), dtype=np.uint8)
+                    yield ScriptedFrame(self.now, blank, self.conversions)
+                elif step == UNCONVERTIBLE:
+                    yield UnconvertibleFrame()
                 elif isinstance(step, Exception):
                     raise step
                 else:
                     assert isinstance(step, float)
                     self.now = step
-                    frame = np.zeros((2, 2, 3), dtype=np.uint8)
-                    self.frames[step] = frame
-                    yield frame
+                    image = np.zeros((2, 2, 3), dtype=np.uint8)
+                    self.frames[step] = image
+                    yield ScriptedFrame(step, image, self.conversions)
         finally:
             self.closed.append(url)
 
@@ -201,6 +231,53 @@ def test_cameras_sharing_a_url_sample_at_their_own_rates_from_one_decoder() -> N
     assert all(s.image is source.frames[s.captured_at] for s in recorder.samples)
     assert source_positions == [s.captured_at for s in recorder.samples]
     assert recorder.statuses() == [("slow", True), ("fast", True)]
+
+
+def test_only_frames_a_camera_samples_are_converted_once_each() -> None:
+    stop = threading.Event()
+    two_seconds_at_10_fps = [index / 10 for index in range(20)]
+    source = ScriptedSource({URL: [[*two_seconds_at_10_fps, STOP]]}, stop)
+    hub = CameraStreamHub(
+        {"slow": camera(fps=1), "fast": camera(fps=2)},
+        frame_source=source,
+        clock=source.clock,
+        reconnect_delay=no_delay,
+    )
+    recorder = Recorder()
+
+    run_hub(hub, recorder.on_sample, recorder.on_status, stop)
+
+    # Of 20 decoded frames, only the 4 that a camera sampled were converted, each
+    # once, even when both cameras sampled it; both then share one array.
+    assert source.conversions == [0.0, 0.5, 1.0, 1.5]
+    images = {(s.camera_id, s.captured_at): s.image for s in recorder.samples}
+    assert images[("slow", 0.0)] is images[("fast", 0.0)]
+    assert images[("slow", 1.0)] is images[("fast", 1.0)]
+
+
+def test_a_frame_that_fails_to_convert_is_a_stream_failure() -> None:
+    stop = threading.Event()
+    source = ScriptedSource({URL: [[UNCONVERTIBLE], [0.0, STOP]]}, stop)
+    attempts: list[int] = []
+
+    def record_attempt(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0.0
+
+    hub = CameraStreamHub(
+        {"garage": camera()},
+        frame_source=source,
+        clock=source.clock,
+        reconnect_delay=record_attempt,
+    )
+    recorder = Recorder()
+
+    run_hub(hub, recorder.on_sample, recorder.on_status, stop)
+
+    # The bad first frame never brings the camera online; the hub reconnects.
+    assert attempts == [1]
+    assert source.opened == [URL, URL]
+    assert recorder.events == [("status", "garage", True), ("sample", "garage", 0.0)]
 
 
 def test_first_frame_after_a_reconnect_is_sampled_at_once_as_a_new_baseline() -> None:

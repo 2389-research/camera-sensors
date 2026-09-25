@@ -8,7 +8,7 @@ import threading
 import time
 from collections.abc import Callable, Generator, Iterator, Mapping
 from dataclasses import dataclass
-from typing import NotRequired, TypedDict
+from typing import NotRequired, Protocol, TypedDict
 
 import av
 import numpy as np
@@ -19,8 +19,21 @@ from djev_sensors.events import log_event
 
 _MAX_RECONNECT_DELAY_SECONDS = 30.0
 
-# Opens a URL and yields its decoded frames as BGR arrays.
-FrameSource = Callable[[str], Iterator[NDArray[np.uint8]]]
+
+class DecodedFrame(Protocol):
+    """A decoded video frame, converted to a BGR array only on request.
+
+    The hub converts only frames that some camera ID samples, since conversion
+    allocates a full-size array.
+    """
+
+    def to_bgr(self) -> NDArray[np.uint8]:
+        """Return the frame as a BGR array at source resolution."""
+        ...
+
+
+# Opens a URL and yields its decoded frames, not yet converted.
+FrameSource = Callable[[str], Iterator[DecodedFrame]]
 
 
 @dataclass(frozen=True, eq=False)
@@ -47,11 +60,22 @@ def reconnect_delay(attempt: int) -> float:
     return min(2.0 ** min(attempt - 1, 5), _MAX_RECONNECT_DELAY_SECONDS)
 
 
-def open_rtsp_frames(url: str) -> Iterator[NDArray[np.uint8]]:
-    """Decode the first video stream of `url` with PyAV, yielding BGR frames.
+class _PyAVFrame:
+    """A frame PyAV decoded, converted to BGR only when a camera samples it."""
 
-    Opening, reading, and decoding errors propagate; their messages quote the
-    URL, credentials included, so callers must never log them. Closing the
+    def __init__(self, frame: av.VideoFrame) -> None:
+        self._frame = frame
+
+    def to_bgr(self) -> NDArray[np.uint8]:
+        return np.asarray(self._frame.to_ndarray(format="bgr24"), dtype=np.uint8)
+
+
+def open_rtsp_frames(url: str) -> Iterator[DecodedFrame]:
+    """Decode every frame of the first video stream of `url` with PyAV.
+
+    Errors propagate: open, read, and decode errors from the generator, and
+    conversion errors from `to_bgr()`. PyAV messages can quote the URL,
+    credentials included, so callers must never log them. Closing the
     generator closes the container.
     """
     # FFmpeg's own log messages can quote the URL too. PyAV discards them by
@@ -61,7 +85,7 @@ def open_rtsp_frames(url: str) -> Iterator[NDArray[np.uint8]]:
         url, options={"rtsp_transport": "tcp"}, timeout=(10.0, 10.0)
     ) as container:
         for frame in container.decode(video=0):
-            yield np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
+            yield _PyAVFrame(frame)
 
 
 class CameraStreamHub:
@@ -104,9 +128,9 @@ class CameraStreamHub:
 
         `on_status(camera_id, connected)` fires only on transitions. Each camera
         ID starts offline and goes online at its URL's first decoded frame after
-        a (re)connect. It goes offline when opening, reading, or decoding fails,
-        a read times out, or the stream ends; the hub then waits
-        `reconnect_delay(attempt)` seconds and reopens the URL.
+        a (re)connect. It goes offline when opening, reading, decoding, or
+        converting a frame fails, a read times out, or the stream ends; the hub
+        then waits `reconnect_delay(attempt)` seconds and reopens the URL.
 
         The first frame after each (re)connect is sampled at once, then each
         camera ID samples at its configured FPS. `on_sample` runs on the URL's
@@ -153,7 +177,7 @@ class CameraStreamHub:
         if failures:
             raise failures[0]
 
-    def _open_counted(self, url: str) -> Generator[NDArray[np.uint8], None, None]:
+    def _open_counted(self, url: str) -> Generator[DecodedFrame, None, None]:
         """Yield frames from the frame source, counting it as open until closed."""
         with self._lock:
             self._open_decoders += 1
@@ -214,7 +238,7 @@ class _StreamWorker:
         self,
         url: str,
         cameras: Mapping[str, float],
-        frame_source: Callable[[str], Generator[NDArray[np.uint8], None, None]],
+        frame_source: Callable[[str], Generator[DecodedFrame, None, None]],
         clock: Callable[[], float],
         reconnect_delay: Callable[[int], float],
         on_sample: Callable[[FrameSample], None],
@@ -257,35 +281,47 @@ class _StreamWorker:
 
         Returns the exception that ended the stream, or None if it ended
         without one or stop was requested. The frame source opens lazily, so
-        open failures surface here too.
+        open failures surface here too. Only frames that some camera ID is due
+        to sample get converted, once each.
         """
+        for sample_clock in self._sample_clocks.values():
+            sample_clock.restart()
         frames = self._frame_source(self._url)
         try:
             while True:
                 try:
-                    image = next(frames)
+                    frame = next(frames)
                 except StopIteration:
                     return None
                 except Exception as exc:  # open, read, decode, or timeout failure
                     return exc
                 if self._stop_event.is_set():
                     return None
-                self._handle_frame(image, self._clock())
+                captured_at = self._clock()
+                due = [
+                    camera_id
+                    for camera_id, sample_clock in self._sample_clocks.items()
+                    if sample_clock.should_sample(captured_at)
+                ]
+                if not due:
+                    continue
+                try:
+                    image = frame.to_bgr()
+                except Exception as exc:  # the decoded frame would not convert
+                    return exc
+                # A connection's first frame is due for every camera ID, so the
+                # stream goes online only once a frame has converted.
+                if not self._online:
+                    self._mark_online()
+                for camera_id in due:
+                    self._on_sample(FrameSample(camera_id, image, captured_at))
         finally:
             frames.close()
-
-    def _handle_frame(self, image: NDArray[np.uint8], captured_at: float) -> None:
-        if not self._online:
-            self._mark_online()
-        for camera_id, sample_clock in self._sample_clocks.items():
-            if sample_clock.should_sample(captured_at):
-                self._on_sample(FrameSample(camera_id, image, captured_at))
 
     def _mark_online(self) -> None:
         self._online = True
         self._attempt = 0
-        for camera_id, sample_clock in self._sample_clocks.items():
-            sample_clock.restart()
+        for camera_id in self._sample_clocks:
             log_event("camera.connected", camera=camera_id)
             self._on_status(camera_id, True)
 

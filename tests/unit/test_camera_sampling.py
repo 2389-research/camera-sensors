@@ -142,7 +142,7 @@ def run_hub(
     on_status: Callable[[str, bool], None],
     stop_event: threading.Event,
 ) -> None:
-    """Run the hub on this thread; fail instead of hanging if it never stops."""
+    """Run the hub on this thread; fail if the test watchdog had to stop it."""
     expired = threading.Event()
 
     def expire() -> None:
@@ -156,7 +156,9 @@ def run_hub(
     finally:
         watchdog.cancel()
         watchdog.join()
-    assert not expired.is_set(), "the hub ran until the test watchdog stopped it"
+        # Checked even when run() raised, so a callback failure that never
+        # stopped the hub cannot pass for one that did.
+        assert not expired.is_set(), "the hub ran until the test watchdog stopped it"
 
 
 def djev_events(
@@ -349,7 +351,6 @@ def test_an_exception_from_on_sample_stops_every_worker_and_is_reraised() -> Non
     with pytest.raises(RuntimeError, match="detector bug"):
         run_hub(hub, on_sample, ignore_status, stop)
 
-    assert stop.is_set()
     assert sorted(source.closed) == sorted([URL, OTHER_URL])
 
 

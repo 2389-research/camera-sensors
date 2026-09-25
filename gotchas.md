@@ -27,3 +27,7 @@ Docker Desktop accepts a TCP connection on a published port before the container
 ## MediaMTX ends readers when the publisher leaves
 
 With the default `alwaysAvailable: false`, MediaMTX closes RTSP readers when their publisher disconnects, and PyAV's `decode()` then stops without an exception. The camera hub counts that as a disconnect.
+
+## Probability band edges: write `p + t <= 1.0`, not `p <= 1.0 - t`
+
+`1.0 - 0.8` is `0.19999999999999996`, so `0.2 <= 1.0 - 0.8` is False: the plan's `resolve_state` left a probability of exactly 0.2 inside the uncertainty band at the default threshold. Across every threshold with up to four decimal places in (0.5, 1], paired with its decimal `1 - t`, the subtraction missed the edge for 1,845 of 5,555 pairs and `1.0 - p >= t` missed 460. `p + t <= 1.0` missed none: when two decimals add up to one, their rounding errors cannot push the sum above 1.0. `djev_sensors/state.py` uses the sum. (Verified 2026-09-25.)

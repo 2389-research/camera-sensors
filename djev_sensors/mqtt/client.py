@@ -20,10 +20,6 @@ from djev_sensors.mqtt import discovery
 OFFLINE_ACK_TIMEOUT_SECONDS = 2.0
 
 
-def _availability_payload(online: bool) -> str:
-    return discovery.PAYLOAD_AVAILABLE if online else discovery.PAYLOAD_NOT_AVAILABLE
-
-
 class MqttPublisher:
     """Publishes the scheduler's output for Home Assistant; a SensorPublisher.
 
@@ -150,12 +146,22 @@ class MqttPublisher:
             self._availability[sensor_id] = online
             connected = self._connected
         if connected:
-            self._publish(
-                discovery.availability_topic(sensor_id, self._config),
-                _availability_payload(online),
-                qos=1,
-                retain=True,
-            )
+            self._publish_availability(sensor_id, online)
+
+    def _publish_availability(self, sensor_id: str, online: bool) -> None:
+        """Publish one sensor's availability, retained, at QoS 0.
+
+        Paho resends a lost connection's unacknowledged QoS 1 messages after
+        the next connect's replay, so a stale value could land after it. QoS 0
+        is never resent, and the replay on every connect already republishes
+        the current value after any loss.
+        """
+        self._publish(
+            discovery.availability_topic(sensor_id, self._config),
+            discovery.PAYLOAD_AVAILABLE if online else discovery.PAYLOAD_NOT_AVAILABLE,
+            qos=0,
+            retain=True,
+        )
 
     def _publish_discovery(self) -> None:
         published = 0
@@ -236,16 +242,8 @@ class MqttPublisher:
                 self._service_topic, discovery.PAYLOAD_AVAILABLE, qos=1, retain=True
             )
             self._publish_discovery()
-            # Paho resends the lost connection's unacknowledged QoS 1 messages
-            # after this callback returns, so an older availability that was
-            # still in flight when the connection dropped lands after this.
             for sensor_id, online in self._availability.items():
-                self._publish(
-                    discovery.availability_topic(sensor_id, self._config),
-                    _availability_payload(online),
-                    qos=1,
-                    retain=True,
-                )
+                self._publish_availability(sensor_id, online)
 
     def _on_connect_fail(self, client: mqtt.Client, userdata: object) -> None:
         """Paho could not open a TCP connection; it retries after its delay."""

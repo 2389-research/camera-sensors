@@ -141,16 +141,18 @@ def decode(message: Received) -> object:
 class Subscriber:
     """A test client that records the messages on its topic filters in arrival order.
 
-    Subscribes at QoS 2, so each message arrives at the QoS it was published
-    at. Entering connects and returns once the broker has acknowledged the
-    subscription.
+    A message arrives at the lower of its publish QoS and `qos`, so the
+    default of 2 shows each message's publish QoS. Entering connects and
+    returns once the broker has acknowledged the subscription.
     """
 
-    def __init__(self, address: tuple[str, int], filters: Sequence[str]) -> None:
+    def __init__(
+        self, address: tuple[str, int], filters: Sequence[str], *, qos: int = 2
+    ) -> None:
         self._address = address
         client_id = f"djev-test-subscriber-{uuid.uuid4().hex[:12]}"
         self._marker_topic = f"djev-test-markers/{client_id}"
-        self._subscriptions = [(topic, 2) for topic in (*filters, self._marker_topic)]
+        self._subscriptions = [(topic, qos) for topic in (*filters, self._marker_topic)]
         self._changed = threading.Condition()
         self._messages: list[Received] = []
         self._subscribed = False
@@ -340,8 +342,8 @@ def test_a_connect_announces_retained_config_and_availability_but_state_is_not_r
             1,
         ),
         # No camera status yet: offline until the scheduler reports one.
-        (availability_topic("gate_open", config), "offline", 1),
-        (availability_topic("car_present", config), "online", 1),
+        (availability_topic("gate_open", config), "offline", 0),
+        (availability_topic("car_present", config), "online", 0),
     ]
     assert [(m.topic, decode(m), m.qos) for m in received] == [
         *announcement,
@@ -359,6 +361,34 @@ def test_a_connect_announces_retained_config_and_availability_but_state_is_not_r
         [(*item, True) for item in announcement],
         key=lambda item: item[0],
     )
+
+
+def test_sensor_availability_goes_out_at_qos_0_and_stays_retained(
+    mqtt_address: tuple[str, int],
+) -> None:
+    # Paho never resends a QoS 0 message, so no availability from a lost
+    # connection can land after a reconnect's replay (ruling 14).
+    config = validate(raw_config(mqtt_address))
+    gate = availability_topic("gate_open", config)
+    publisher = MqttPublisher(config)
+    # At subscription QoS 1, a QoS 1 publish would arrive at QoS 1.
+    with Subscriber(mqtt_address, [gate], qos=1) as live:
+        publisher.start()
+        try:
+            live.wait_for("the connect replay", lambda messages: len(messages) >= 1)
+            publisher.publish_availability("gate_open", True)
+            received = live.wait_for(
+                "the published availability", lambda messages: len(messages) >= 2
+            )
+            with Subscriber(mqtt_address, [gate], qos=1) as late:
+                retained = late.wait_for(
+                    "the retained availability", lambda messages: len(messages) >= 1
+                )
+        finally:
+            publisher.stop()
+
+    assert [(m.payload, m.qos) for m in received] == [("offline", 0), ("online", 0)]
+    assert [(m.payload, m.qos, m.retain) for m in retained] == [("online", 0, True)]
 
 
 def test_a_reconnect_replays_config_and_availability_but_never_state(

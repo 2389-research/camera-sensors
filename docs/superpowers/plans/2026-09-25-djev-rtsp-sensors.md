@@ -10,6 +10,13 @@
 
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
+## Now
+- Step: Pre-flight conflict scan complete; dispatching Task 1 (project, configuration, safe smoke script)
+- Next: Task 2 (frame difference detector)
+- Open: LunaRoute key rotation is Doctor Biz's action; it gates Task 4 step 5 and the Task 8 live gate
+- Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
+- Compactions: 0
+
 ## Global Constraints
 
 - Only LunaRoute `POST https://gw.lunaroute.com/v1/systemone` may carry Djev requests; never fall back to direct Djev.

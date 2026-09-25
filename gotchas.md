@@ -11,3 +11,19 @@ Do not overwrite sampled frames in a latest-only queue before change detection. 
 ## Exposed key in local smoke script
 
 `test.sh` is untracked and contains a literal LunaRoute bearer token. Never stage or copy that token. Replace it with `LUNAROUTE_API_KEY` before tracking the script, and rotate the exposed key before any live test.
+
+## ABOUTME lines can turn into encoding declarations
+
+Python reads any comment in a file's first two lines that matches `coding[:=]` as a PEP 263 encoding declaration. An ABOUTME line saying "Shared RTSP decoding: one decoder..." failed to import with `SyntaxError: unknown encoding: one`. Never put "coding:" or "coding=" in an ABOUTME line.
+
+## PyAV errors quote the RTSP URL, credentials included
+
+`str(exc)` and `repr(exc)` of a PyAV error hold the full URL with its password (seen with `av.error.ConnectionRefusedError`, errno 61). Log only `type(exc).__name__` and `exc.errno`. FFmpeg's own log lines quote host and port; PyAV discards them by default, and `djev_sensors/camera.py` pins that with `av.logging.set_level(None)` before each open.
+
+## Docker Desktop port probes in the integration stack
+
+Docker Desktop accepts a TCP connection on a published port before the container listens, then closes it at once, so readiness means "connection held open", not "connect succeeded". After a run's stack is gone, macOS can refuse a plain `bind` on 18554 for a while though nothing listens; check that a port is free with a connect probe. Both live in `tests/integration/conftest.py`.
+
+## MediaMTX ends readers when the publisher leaves
+
+With the default `alwaysAvailable: false`, MediaMTX closes RTSP readers when their publisher disconnects, and PyAV's `decode()` then stops without an exception. The camera hub counts that as a disconnect.

@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: Task 3 (shared RTSP decoding, sampling, reconnect); Tasks 1-2 complete and reviewed
-- Next: Task 4 (LunaRoute image fitting and transport)
+- Step: Task 4 (LunaRoute image fitting and typed Noul transport); Tasks 1-3 complete and reviewed
+- Next: Task 5 (sensor state, cooldown, scheduling)
 - Open: LunaRoute key rotation is Doctor Biz's action; it gates Task 4 step 5 and the Task 8 live gate
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Compactions: 0

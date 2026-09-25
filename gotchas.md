@@ -31,3 +31,11 @@ With the default `alwaysAvailable: false`, MediaMTX closes RTSP readers when the
 ## Probability band edges: write `p + t <= 1.0`, not `p <= 1.0 - t`
 
 `1.0 - 0.8` is `0.19999999999999996`, so `0.2 <= 1.0 - 0.8` is False: the plan's `resolve_state` left a probability of exactly 0.2 inside the uncertainty band at the default threshold. Across the 5,000 distinct thresholds with up to four decimal places in (0.5, 1], each paired with its decimal `1 - t`, the subtraction missed the edge for 1,663 and `1.0 - p >= t` missed 414. `p + t <= 1.0` missed none: when two decimals add up to one, their rounding errors cannot push the sum above 1.0. `djev_sensors/state.py` uses the sum. (Verified 2026-09-25.)
+
+## paho-mqtt 2.1: resend order, locks, and sockets
+
+Read in paho 2.1.0's `client.py`. After a reconnect, `_handle_connack` calls `on_connect` first and then resends the lost connection's unacknowledged QoS 1 messages, so an older retained availability still in flight can land after the replay `on_connect` publishes, until the next change. The network thread can hold paho's `_out_message_mutex` while it runs `on_disconnect` (from that resend loop) or `on_publish`, and a QoS 1 `publish()` takes the same mutex: never call `publish()` while holding a lock your callbacks take. Only `Client.__del__` closes the socket pair that wakes the network thread (`reinitialise()` passes its arguments into the new `callback_api_version` slot and raises), so `MqttPublisher.stop()` clears its bound-method callbacks after `loop_stop()` rather than leave the client in a reference cycle.
+
+## Mosquitto publishes the Last Will on a client-ID takeover
+
+A second connection with the publisher's client ID made eclipse-mosquitto:2 drop the publisher and publish its Last Will (`offline`) before the publisher reconnected and replayed `online`. Observed once on 2026-09-25 in a debug run of the reconnect test; the man pages do not say, and `tests/integration/test_mqtt_publishing.py` accepts either behavior.

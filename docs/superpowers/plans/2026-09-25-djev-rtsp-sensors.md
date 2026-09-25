@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: Task 5 (sensor state, cooldown, scheduling); Tasks 1-4 complete and reviewed (Task 4 live probe waits on key rotation)
-- Next: Task 6 (MQTT Discovery, availability, reconnect)
+- Step: Task 6 (MQTT Discovery, availability, reconnect); Tasks 1-5 complete and reviewed (Task 4 live probe waits on key rotation)
+- Next: Task 7 (application loop and lifecycle)
 - Open: LunaRoute key rotation is Doctor Biz's action; it gates Task 4 step 5 and the Task 8 live gate
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Compactions: 0

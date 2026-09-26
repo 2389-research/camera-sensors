@@ -6,6 +6,9 @@ services:
     build: .
 
     restart: unless-stopped
+    # Docker's init runs as PID 1 and forwards signals, so a stop that arrives
+    # before the service installs its own handlers still ends it at once.
+    init: true
     # Shutdown waits up to 3 s for the camera hub, 3 s for running evaluations, and
     # 2 s for the broker to acknowledge "offline"; with cleanup, that can pass 10 s.
     stop_grace_period: 15s

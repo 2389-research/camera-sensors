@@ -28,6 +28,7 @@ services:
   # Each test starts and removes this service; the stack fixture names the others.
   djev-sensors:
     build: ../..
+    init: true  # as in the root compose.yaml: signals reach python from the start
     environment:
       # Passed through from the shell that runs docker compose; unset stays unset.
       - LUNAROUTE_API_KEY

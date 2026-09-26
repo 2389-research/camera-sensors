@@ -613,7 +613,7 @@ def test_a_confident_djev_judgment_turns_the_sensor_on_with_its_attributes(
 ) -> None:
     api_key = os.environ.get("LUNAROUTE_API_KEY")
     if not api_key:
-        pytest.fail("LUNAROUTE_API_KEY is not set; this test needs a rotated key")
+        pytest.fail("LUNAROUTE_API_KEY is not set; this test needs it")
     publisher = start_publisher(SWITCHING_PATH, white_after=WHITE_AFTER_SECONDS)
     # The earliest the picture can turn white; FFmpeg starts after this clock.
     white_at = publisher.started_at + WHITE_AFTER_SECONDS

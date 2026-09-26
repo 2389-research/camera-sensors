@@ -480,7 +480,7 @@ stacks mount files from it, and Colima shares only your home directory by
 default), and FFmpeg on `PATH` (the RTSP tests publish with it). `--live`
 also needs:
 
-- a rotated LunaRoute key in `LUNAROUTE_API_KEY`; the live tests fail, not
+- a LunaRoute API key in `LUNAROUTE_API_KEY`; the live tests fail, not
   skip, without one;
 - internet access to `gw.lunaroute.com`, to pull
   `ghcr.io/home-assistant/home-assistant:stable`, and to pull the service
@@ -491,11 +491,14 @@ The end-to-end tests build the service image from the `Dockerfile`, onboard a
 fresh Home Assistant through its HTTP API, add its MQTT integration with the
 config flow, and check entities through Home Assistant's REST API. They send
 LunaRoute only synthetic pictures: a white square and a clip that turns from
-black to white. They remove everything they start, including the image. To
-run the ones that need no key:
+black to white. Another test builds the image from a copy of the sources
+that only their owner can read, the way a checkout under a strict umask
+leaves them, and imports the service as the image's unprivileged user. They
+remove everything they start, including the images. To run the ones that
+need no key:
 
 ```sh
-uv run pytest tests/e2e -q -k "home_assistant and not djev"
+uv run pytest tests/e2e -q -k "not djev and not lunaroute"
 ```
 
 The script prints `==> <step>` before each step. It exits 0 after printing

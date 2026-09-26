@@ -21,7 +21,7 @@ def _white_frame() -> NDArray[np.uint8]:
 def test_live_gateway_returns_a_numeric_probability() -> None:
     api_key = os.environ.get("LUNAROUTE_API_KEY")
     if not api_key:
-        pytest.fail("LUNAROUTE_API_KEY is not set; the live probe needs a rotated key")
+        pytest.fail("LUNAROUTE_API_KEY is not set; the live probe needs it")
 
     async def _call() -> None:
         client = LunaRouteDjevClient(

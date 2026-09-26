@@ -79,10 +79,12 @@ class SensorScheduler:
     def on_change(
         self, camera_id: str, frame: NDArray[np.uint8], changed_pct: float
     ) -> None:
-        """Start an evaluation for each sensor on `camera_id` this change qualifies.
+        """Start an evaluation for each sensor on `camera_id` this sample calls for.
 
-        A sensor qualifies when `changed_pct` meets its threshold, it has no
-        evaluation pending, and its cooldown has expired. Never blocks.
+        A change that meets a sensor's threshold triggers a look when the sensor
+        has no evaluation pending and its cooldown has expired. It also owes the
+        sensor `recheck_count` more looks at the newest frame, which later
+        samples take up one at a time as each comes due. Never blocks.
         """
         now = self._clock()
         generation = self._camera_generations[camera_id]
@@ -90,31 +92,55 @@ class SensorScheduler:
         for sensor in self._sensors:
             if sensor.config.camera != camera_id:
                 continue
-            if changed_pct < sensor.config.change_threshold_pct:
-                continue
-            if sensor.inference_in_flight or not sensor.cooldown_expired(now):
+            if changed_pct >= sensor.config.change_threshold_pct:
+                # Movement, looked at now or not: the trickle restarts after it.
+                sensor.rechecks_remaining = sensor.config.recheck_count
+                if sensor.inference_in_flight or not sensor.cooldown_expired(now):
+                    log_event(
+                        "sensor.cooldown_skipped",
+                        sensor=sensor.sensor_id,
+                        camera=camera_id,
+                        change_pct=change_pct,
+                        reason="in_flight"
+                        if sensor.inference_in_flight
+                        else "cooldown",
+                    )
+                    continue
                 log_event(
-                    "sensor.cooldown_skipped",
+                    "sensor.triggered",
                     sensor=sensor.sensor_id,
                     camera=camera_id,
                     change_pct=change_pct,
-                    reason="in_flight" if sensor.inference_in_flight else "cooldown",
                 )
-                continue
-            # Set now, not when the request starts, so a sensor still waiting
-            # for a slot also refuses a second evaluation.
-            sensor.inference_in_flight = True
-            log_event(
-                "sensor.triggered",
-                sensor=sensor.sensor_id,
-                camera=camera_id,
-                change_pct=change_pct,
-            )
-            task = asyncio.create_task(
-                self._evaluate(sensor, frame, change_pct, generation)
-            )
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+                self._start(sensor, frame, change_pct, generation, "change")
+            elif sensor.recheck_due(now):
+                sensor.rechecks_remaining -= 1
+                log_event(
+                    "sensor.rechecking",
+                    sensor=sensor.sensor_id,
+                    camera=camera_id,
+                    change_pct=change_pct,
+                    remaining=sensor.rechecks_remaining,
+                )
+                self._start(sensor, frame, change_pct, generation, "recheck")
+
+    def _start(
+        self,
+        sensor: SensorRuntime,
+        frame: NDArray[np.uint8],
+        change_pct: float,
+        generation: int,
+        trigger: str,
+    ) -> None:
+        """Run one evaluation as its own task, tracked until it finishes."""
+        # Set now, not when the request starts, so a sensor still waiting for a
+        # slot also refuses a second evaluation.
+        sensor.inference_in_flight = True
+        task = asyncio.create_task(
+            self._evaluate(sensor, frame, change_pct, generation, trigger)
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     def camera_status(self, camera_id: str, online: bool) -> None:
         """Record a camera connecting or disconnecting for every sensor it feeds."""
@@ -122,6 +148,10 @@ class SensorScheduler:
             self._camera_generations[camera_id] += 1
         for sensor in self._sensors:
             if sensor.config.camera == camera_id:
+                if not online:
+                    # Rechecks follow movement; after an outage, only new movement
+                    # counts.
+                    sensor.rechecks_remaining = 0
                 self._set_availability(sensor, camera_available=online)
 
     async def drain(self) -> None:
@@ -139,6 +169,7 @@ class SensorScheduler:
         frame: NDArray[np.uint8],
         change_pct: float,
         generation: int,
+        trigger: str,
     ) -> None:
         camera_id = sensor.config.camera
         try:
@@ -157,9 +188,9 @@ class SensorScheduler:
                 )
                 return
             if isinstance(outcome, BinaryJudgment):
-                self._apply_judgment(sensor, outcome, change_pct)
+                self._apply_judgment(sensor, outcome, change_pct, trigger)
             elif isinstance(outcome, InvalidModelResponse):
-                self._apply_invalid_response(sensor, change_pct)
+                self._apply_invalid_response(sensor, change_pct, trigger)
             else:
                 self._set_availability(sensor, model_available=False)
         finally:
@@ -227,7 +258,11 @@ class SensorScheduler:
         return f"{self._prompt_wrapper}\n\n{sensor.config.prompt}"
 
     def _apply_judgment(
-        self, sensor: SensorRuntime, judgment: BinaryJudgment, change_pct: float
+        self,
+        sensor: SensorRuntime,
+        judgment: BinaryJudgment,
+        change_pct: float,
+        trigger: str,
     ) -> None:
         self._set_availability(sensor, model_available=True)
         self._publisher.publish_attributes(
@@ -243,6 +278,7 @@ class SensorScheduler:
                 "sent_width": judgment.sent_width,
                 "sent_height": judgment.sent_height,
                 "parse_error": False,
+                "trigger": trigger,
             },
         )
         state = resolve_state(
@@ -251,7 +287,9 @@ class SensorScheduler:
         if state is not None and state != sensor.state:
             self._publish_state(sensor, state)
 
-    def _apply_invalid_response(self, sensor: SensorRuntime, change_pct: float) -> None:
+    def _apply_invalid_response(
+        self, sensor: SensorRuntime, change_pct: float, trigger: str
+    ) -> None:
         self._set_availability(sensor, model_available=True)
         # Spec sections 18 and 31: a malformed answer means OFF, published even
         # when the sensor is already OFF.
@@ -265,6 +303,7 @@ class SensorScheduler:
                 "camera": sensor.config.camera,
                 "model": self._model_name,
                 "evaluated_at": self._evaluated_at(),
+                "trigger": trigger,
             },
         )
 

@@ -235,6 +235,7 @@ def test_valid_result_publishes_attributes_then_the_new_state() -> None:
                     "sent_width": 768,
                     "sent_height": 432,
                     "parse_error": False,
+                    "trigger": "change",
                 },
             ),
             ("state", "gate", True),
@@ -345,6 +346,7 @@ def test_malformed_response_publishes_off_even_when_already_off(
                     "camera": "yard",
                     "model": "djev",
                     "evaluated_at": EVALUATED_AT,
+                    "trigger": "change",
                 },
             ),
         ]
@@ -917,3 +919,138 @@ def test_an_evaluation_logs_named_events_without_the_prompt(
         }
     ]
     assert not [m for m in messages if wrapper in m or GATE in m]
+
+
+# Rechecks: a slow trickle of looks at the newest frame after movement
+
+
+def same_frames(
+    sent: Sequence[NDArray[np.uint8]], expected: Sequence[NDArray[np.uint8]]
+) -> bool:
+    """True when the model received exactly these frame objects, in order."""
+    return len(sent) == len(expected) and all(
+        a is b for a, b in zip(sent, expected, strict=True)
+    )
+
+
+async def samples(h: Harness, steps: Sequence[tuple[float, float]]) -> None:
+    """Feed one camera sample per (time, change) step, letting evaluations run."""
+    for now, change in steps:
+        h.clock.now = now
+        h.scheduler.on_change("yard", new_frame(), change)
+        await settle()
+
+
+def test_after_movement_the_newest_frame_is_rechecked_on_a_slow_trickle() -> None:
+    frames = [new_frame() for _ in range(4)]
+    h = make_harness(
+        {"couch": sensor(PORCH, recheck_count=3, recheck_interval_seconds=10)},
+        {PORCH: [judgment(0.5)] * 4},
+    )
+
+    async def scenario() -> None:
+        h.scheduler.on_change("yard", frames[0], 3.0)  # movement: the first look
+        await settle()
+        for now, frame in [
+            (5.0, new_frame()),  # still inside the interval: no look
+            (10.0, frames[1]),
+            (15.0, new_frame()),
+            (20.0, frames[2]),
+            (30.0, frames[3]),
+            (40.0, new_frame()),  # three rechecks done: the trickle stops
+        ]:
+            h.clock.now = now
+            h.scheduler.on_change("yard", frame, 0.0)
+            await settle()
+
+    run(scenario())
+    assert same_frames(h.model.images, frames)
+
+
+def test_new_movement_restarts_the_trickle() -> None:
+    h = make_harness(
+        {"couch": sensor(PORCH, recheck_count=2, recheck_interval_seconds=10)},
+        {PORCH: [judgment(0.5)] * 4},
+    )
+    # Movement at 15 s arrives inside the cooldown, so it earns no look of its
+    # own, but it restores both rechecks: looks at 0, 10, 20, and 30 s.
+    run(samples(h, [(0, 3.0), (10, 0.0), (15, 3.0), (20, 0.0), (30, 0.0), (40, 0.0)]))
+    assert len(h.model.calls) == 4
+
+
+def test_rechecks_never_come_sooner_than_the_cooldown() -> None:
+    h = make_harness(
+        {
+            "couch": sensor(
+                PORCH, cooldown_seconds=10, recheck_count=1, recheck_interval_seconds=2
+            )
+        },
+        {PORCH: [judgment(0.5)] * 2},
+    )
+    run(samples(h, [(0, 3.0), (2, 0.0), (9.9, 0.0)]))
+    assert len(h.model.calls) == 1
+    run(samples(h, [(10, 0.0)]))
+    assert len(h.model.calls) == 2
+
+
+def test_a_recheck_count_of_zero_turns_rechecks_off() -> None:
+    h = make_harness(
+        {"couch": sensor(PORCH, recheck_count=0)}, {PORCH: [judgment(0.5)]}
+    )
+    run(samples(h, [(0, 3.0), (10, 0.0), (20, 0.0), (30, 0.0)]))
+    assert len(h.model.calls) == 1
+
+
+def test_a_camera_outage_cancels_the_rechecks_it_owed() -> None:
+    h = make_harness(
+        {"couch": sensor(PORCH, recheck_count=3)}, {PORCH: [judgment(0.5)]}
+    )
+
+    async def scenario() -> None:
+        await samples(h, [(0, 3.0)])
+        h.scheduler.camera_status("yard", False)
+        h.scheduler.camera_status("yard", True)
+        await samples(h, [(10, 0.0), (20, 0.0)])
+
+    run(scenario())
+    assert len(h.model.calls) == 1
+
+
+def test_a_recheck_can_settle_an_uncertain_first_look() -> None:
+    h = make_harness(
+        {"couch": sensor(PORCH, recheck_count=1)},
+        {PORCH: [judgment(0.66), judgment(0.95)]},
+    )
+    run(samples(h, [(0, 3.0), (10, 0.0)]))
+    assert h.publisher.values("state", "couch") == [True]
+    triggers = [
+        attributes["trigger"]  # type: ignore[index]
+        for attributes in h.publisher.values("attributes", "couch")
+    ]
+    assert triggers == ["change", "recheck"]
+
+
+def test_each_recheck_is_logged_with_the_rechecks_left(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="djev_sensors")
+    h = make_harness(
+        {"couch": sensor(PORCH, recheck_count=2)}, {PORCH: [judgment(0.5)] * 3}
+    )
+    run(samples(h, [(0, 3.0), (10, 0.4), (20, 0.0)]))
+    assert logged(caplog, "sensor.rechecking") == [
+        {
+            "event": "sensor.rechecking",
+            "sensor": "couch",
+            "camera": "yard",
+            "change_pct": 0.4,
+            "remaining": 1,
+        },
+        {
+            "event": "sensor.rechecking",
+            "sensor": "couch",
+            "camera": "yard",
+            "change_pct": 0.0,
+            "remaining": 0,
+        },
+    ]

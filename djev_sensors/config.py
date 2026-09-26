@@ -107,6 +107,11 @@ class SensorConfig(BaseModel):
     true_threshold: float = Field(default=0.80, gt=0.5, le=1)
     change_threshold_pct: float = Field(default=2.5, gt=0, le=100)
     cooldown_seconds: float = Field(default=10, ge=0, allow_inf_nan=False)
+    # After a look triggered by movement, look at the newest frame again this many
+    # times, this many seconds apart and never sooner than the cooldown, so a
+    # scene that settles after the movement still gets judged.
+    recheck_count: int = Field(default=3, ge=0)
+    recheck_interval_seconds: float = Field(default=10, gt=0, allow_inf_nan=False)
 
     @field_validator("prompt")
     @classmethod

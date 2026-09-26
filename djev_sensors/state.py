@@ -37,6 +37,7 @@ class SensorRuntime:
     model_available: bool = True
     inference_in_flight: bool = False
     cooldown_started_at: float | None = None  # monotonic seconds
+    rechecks_remaining: int = 0  # looks at the newest frame still owed
 
     @property
     def available(self) -> bool:
@@ -48,3 +49,15 @@ class SensorRuntime:
         if self.cooldown_started_at is None:
             return True
         return now - self.cooldown_started_at >= self.config.cooldown_seconds
+
+    def recheck_due(self, now: float) -> bool:
+        """True when an owed recheck may start: nothing pending, and both the recheck
+        interval and the cooldown have passed since the last request began."""
+        if self.rechecks_remaining <= 0 or self.inference_in_flight:
+            return False
+        if self.cooldown_started_at is None:
+            return False
+        waited = now - self.cooldown_started_at
+        return waited >= self.config.recheck_interval_seconds and self.cooldown_expired(
+            now
+        )

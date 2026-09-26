@@ -703,3 +703,30 @@ def test_a_yaml_syntax_error_keeps_the_line_out_of_the_full_traceback(
     with pytest.raises(ConfigError) as exc_info:
         load_config(path, BASE_ENV)
     assert "lr_live_7f3a9c0d" not in _full_traceback(exc_info.value)
+
+
+def test_sensors_recheck_three_times_ten_seconds_apart_by_default(
+    tmp_path: Path,
+) -> None:
+    loaded = load_config(_write_config(tmp_path, _config_dict()), BASE_ENV)
+    assert loaded.sensors["car"].recheck_count == 3
+    assert loaded.sensors["car"].recheck_interval_seconds == 10
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "problem"),
+    [
+        ("recheck_count", -1, "greater than or equal to 0"),
+        ("recheck_count", 1.5, "valid integer"),
+        ("recheck_interval_seconds", 0, "greater than 0"),
+        ("recheck_interval_seconds", -5, "greater than 0"),
+        ("recheck_interval_seconds", math.inf, "finite number"),
+    ],
+)
+def test_invalid_recheck_settings_are_rejected(
+    tmp_path: Path, field: str, value: float, problem: str
+) -> None:
+    config = _config_dict()
+    config["sensors"]["car"][field] = value
+    with pytest.raises(ConfigError, match=f"{field}.*{problem}"):
+        load_config(_write_config(tmp_path, config), BASE_ENV)

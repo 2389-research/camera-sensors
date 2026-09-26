@@ -593,6 +593,19 @@ def test_a_broker_restart_brings_back_discovery_and_availability_without_state(
     assert_no_model_request(service)
 
 
+def test_the_service_runs_as_an_unprivileged_user(service: Service) -> None:
+    sensor_id = "unprivileged_scene"
+    service.start(static_scene(sensor_id, "Unprivileged Scene"), FAKE_API_KEY)
+
+    # Its discovery config shows it read the read-only config and connected.
+    config_topic = f"homeassistant/binary_sensor/djev_sensors/{sensor_id}/config"
+    wait_for_retained(
+        "the sensor's discovery config", lambda retained: config_topic in retained
+    )
+    assert compose("exec", "-T", SERVICE, "id", "-u").stdout.strip() == "10001"
+    assert_no_model_request(service)
+
+
 def test_a_confident_djev_judgment_turns_the_sensor_on_with_its_attributes(
     home_assistant: HomeAssistant,
     service: Service,

@@ -11,14 +11,15 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: rechecks plus a /simplify pass (79 fewer lines, python runs straight from the venv under Docker's init) on `wip/sensor-rechecks`, not merged; `scripts/check --live` passed; six sensors on four cameras run on the Mac; docker-host has the code but is blocked on its VM CPU type
-- Next: after Doctor Biz switches docker-host's VM CPU type to host and reboots it, stop the Mac copy and run `docker compose up -d` in ~/camera-sensors on docker-host; then decide on merging `wip/sensor-rechecks`
-- Open: docker-host VM CPU type; merge of `wip/sensor-rechecks`; whether one model timeout should mark a sensor unavailable (spec section 19) given LunaRoute's slow spells
+- Step: merge `wip/sensor-rechecks` (rechecks plus the cleanup pass, `scripts/check --live` green) into `main`; pre-build the image on docker-host; its VM CPU still lacks SSE3/SSE4/POPCNT, so the Mac copy keeps serving
+- Next: after Doctor Biz switches docker-host's VM CPU type to host and reboots it, stop the Mac copy and run `docker compose up -d` in ~/camera-sensors on docker-host
+- Open: docker-host VM CPU type; front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19)
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
 - Approved: "the old one isn't exposed. do 2, and 3" (2026-09-25) — run the live gates with the existing LunaRoute key (no rotation); fix the two before-shipping items
 - Approved: "1" (2026-09-25) — finishing option 1 for `wip/live-gates-hardening`, merge back to main locally
 - Approved: "sure. also push" (2026-09-25) — amend spec section 37 so a service restart keeps HA's last state; push `main` to origin
+- Approved: "let's merge the rechecks, and deploy to docker host" (2026-09-26) — merge `wip/sensor-rechecks` into main; deploy to docker-host once its CPU allows
 - Compactions: 0
 
 ## Global Constraints

@@ -19,8 +19,10 @@ from djev_sensors.events import log_event
 from djev_sensors.models.base import ModelClient
 from djev_sensors.scheduler import SensorScheduler
 
-# Shutdown bounds. With the publisher's own stop, they fit Docker's default
-# 10 s stop grace period.
+# Shutdown bounds. After these 3 s for the hub and 3 s for the drain, the
+# publisher's stop can take up to 5 s more, paho's TCP connect timeout, if a
+# connect is under way, so the worst case is about 11 s. That passes Docker's
+# default 10 s stop grace period, so compose.yaml sets 15 s.
 HUB_STOP_TIMEOUT_SECONDS = 3.0
 DRAIN_TIMEOUT_SECONDS = 3.0
 
@@ -99,9 +101,9 @@ class Application:
         (spec section 27), or never, if stop comes first. Shutdown waits up to
         HUB_STOP_TIMEOUT_SECONDS for the hub, then up to DRAIN_TIMEOUT_SECONDS
         for running evaluations, cancelling the rest, then stops the
-        publisher, which marks the service offline, and closes the model
-        client. If the hub raised, its exception is re-raised after that
-        cleanup.
+        publisher, which marks the sensors and the service offline, and
+        closes the model client. If the hub raised, its exception is re-raised
+        after that cleanup.
         """
         loop = asyncio.get_running_loop()
         hub_outcome: asyncio.Future[None] = loop.create_future()

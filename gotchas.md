@@ -55,3 +55,15 @@ On 2026-09-25 the docker CLI's context was `colima` (Colima 0.10.3: 2 CPUs, 2 Gi
 ## An RTSP open takes seconds to reach its first frame
 
 In one throwaway check on 2026-09-25, PyAV's `av.open` of a MediaMTX stream (TCP, H.264 with a keyframe every second) decoded its first frame about 6 s after the open began. The service opens cameras the same way, so `camera.connected` comes seconds after each (re)connect starts. Timing-sensitive tests must allow for it: the e2e black-to-white clip turns white 30 s after its publisher starts, and the model test fails with a clear message if the camera connected after the switch.
+
+## uv run needs a writable cache, even with --no-sync
+
+In the service image, `uv run --no-sync` as a system user without a home directory stopped at once with `failed to create directory /home/djev/.cache/uv: Permission denied (os error 13)` (uv 0.9.25, 2026-09-25), so the service never started. The Dockerfile's `useradd --create-home` gives the unprivileged user a home for that cache. `tests/e2e/test_home_assistant.py` checks the container's UID after the service has published discovery.
+
+## paho-mqtt 2.1: which callback sees a failed connect
+
+Read in paho 2.1.0's `client.py`. `on_connect_fail` fires only when `reconnect()` raises `OSError`, meaning the TCP connect itself failed. A connection the peer closes before any CONNACK reaches only `on_disconnect`, with reason 128 "Unspecified error" (`_loop_rc_handle` after `MQTT_ERR_CONN_LOST`), and one that gets no CONNACK within the 60 s keepalive gets 141 "Keep alive timeout". A refused CONNACK calls `on_connect` with the refusal, then `on_disconnect` with 128. Our own `disconnect()` reports reason 0, which is not a failure. `MqttPublisher` logs `mqtt.connect_failed` once for each of these paths.
+
+## math.isfinite raises OverflowError for a huge int
+
+`math.isfinite(10**400)` raises `OverflowError: int too large to convert to float`, and Python's `json` module turns a 401-digit number into exactly such an int. `_extract_noul` checks finiteness only for floats and lets the `0 <= value <= 1` comparison, which is exact for ints, reject the rest. (Verified 2026-09-25.)

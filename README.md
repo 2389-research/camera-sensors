@@ -32,7 +32,9 @@ no request at startup.
 
 2. Put the secrets in a `.env` file beside `compose.yaml`. Compose reads it
    for the variables `compose.yaml` names, and your shell's environment
-   overrides it. Git and Docker both ignore `.env`.
+   overrides it. Git and Docker both ignore `.env`. The file holds the key,
+   the broker password, and camera passwords, so keep it at mode 600 with
+   `chmod 600 .env`:
 
    ```
    LUNAROUTE_API_KEY=lr_...
@@ -41,10 +43,10 @@ no request at startup.
    BACKYARD_RTSP_URL=rtsp://viewer:secret@192.0.2.11:554/stream1
    ```
 
-   Run `chmod 600 .env`. If your config names other variables, add them under
-   `environment:` in `compose.yaml` as well, or the container never sees them.
-   Compose warns about each of the four that is unset and passes it empty; the
-   service fails only when a variable its config names is empty.
+   If your config names other variables, add them under `environment:` in
+   `compose.yaml` as well, or the container never sees them. Compose warns
+   about each of the four that is unset and passes it empty; the service fails
+   only when a variable its config names is empty.
 
 3. Build and start the container:
 
@@ -55,7 +57,9 @@ no request at startup.
 
 The image is Python 3.12 with dependencies installed by uv from `uv.lock`. The
 container mounts `config.yaml` read-only at `/app/config.yaml` and restarts
-unless you stop it. It needs no volume: frames and state stay in memory.
+unless you stop it. It needs no volume: frames and state stay in memory. It
+runs as an unprivileged user, UID 10001, which must be able to read
+`config.yaml`; the file holds no secrets, so mode 644 is fine.
 `docker compose stop` sends SIGTERM and allows 15 seconds, which covers the
 service's slowest shutdown.
 
@@ -154,7 +158,8 @@ sensors:
 ### Reference
 
 The service rejects unknown keys. Camera and sensor IDs use lowercase
-letters, digits, and underscores.
+letters, digits, and underscores. The config needs at least one sensor, and
+the sensor ID `service` is reserved for the service's own availability topic.
 
 `system.mqtt`
 
@@ -163,9 +168,9 @@ letters, digits, and underscores.
 | `host` | required | Broker host name or address. |
 | `port` | `1883` | Broker port. |
 | `username` | none | Broker user name. |
-| `password_env` | none | Name of the environment variable that holds the broker password. |
-| `discovery_prefix` | `homeassistant` | Must match the discovery prefix of Home Assistant's MQTT integration. |
-| `topic_prefix` | `djev-sensors` | Start of every state, attribute, and availability topic. |
+| `password_env` | none | Name of the environment variable that holds the broker password. Requires `username`. |
+| `discovery_prefix` | `homeassistant` | Must match the discovery prefix of Home Assistant's MQTT integration. Not empty; no `+` or `#`. |
+| `topic_prefix` | `djev-sensors` | Start of every state, attribute, and availability topic. Not empty; no `+` or `#`. |
 | `client_id` | `djev-sensors` | MQTT client ID. Two clients with one ID disconnect each other over and over. |
 
 `system.model`
@@ -218,7 +223,8 @@ Keys and passwords never go in `config.yaml`. The file names environment
 variables instead: `api_key_env`, `password_env`, and `${VAR}` tokens in camera
 URLs. A camera URL can come whole from a variable (`rtsp: ${GARAGE_RTSP_URL}`),
 or keep its password in one: `rtsp: rtsp://viewer:${GARAGE_PASSWORD}@192.0.2.10:554/stream1`.
-The service refuses a literal password in a URL, and it exits with status 2
+The service refuses a literal `password` under `mqtt`, a literal `api_key`
+under `model`, and a literal password in a camera URL. It exits with status 2
 when a variable its config names is missing or empty.
 
 ## What Home Assistant sees
@@ -247,8 +253,9 @@ availability. It never publishes an old state.
 - One confident judgment changes the state; there is no confirmation round.
 - The service publishes a state only when it changes. A malformed answer from
   Djev publishes `OFF` every time, with `parse_error: true` in the attributes.
-- State lives in memory. After a restart, every sensor's state is unknown and
-  the service publishes none until the sensor's first confident judgment.
+- State lives in memory. After a restart, every sensor's state is unknown,
+  and the service publishes none until the sensor's first confident judgment
+  or malformed answer. A malformed answer publishes `OFF` from unknown too.
 - Home Assistant keeps the last state it received. When the service restarts,
   the entity shows unavailable until its camera connects, then that last state
   until a new judgment. After Home Assistant itself restarts, the entity shows
@@ -259,9 +266,10 @@ availability. It never publishes an old state.
 
 An entity is available only while all of these hold:
 
-- The service is connected. A clean shutdown publishes the retained service
-  `offline`, and the broker publishes the same Last Will when the connection
-  drops without a clean MQTT disconnect, as after a crash or `docker kill`.
+- The service is connected. A clean shutdown marks every sensor `offline`,
+  then publishes the retained service `offline`. When the connection drops
+  without a clean MQTT disconnect, as after a crash or `docker kill`, the
+  broker publishes the service `offline` as the Last Will.
 - Its camera streams. When the stream fails or ends, every sensor on that
   camera goes unavailable, and the service reconnects after 1, 2, 4, 8, 16,
   and then every 30 seconds. The first frame after a reconnect restores it.
@@ -336,7 +344,7 @@ only the exception class and errno.
 | `sensor.state_changed` | `sensor`, `camera`, `state` | `ON` or `OFF` changed. |
 | `sensor.availability_changed` | `sensor`, `camera`, `available`, `camera_available`, `model_available` | Availability changed. |
 | `mqtt.connected` / `mqtt.disconnected` | `host`, `port` / `reason_code`, `reason` | Broker connection. |
-| `mqtt.connect_failed` | `host`, `port`, and `reason_code`, `reason` when the broker refused | A connect attempt failed. |
+| `mqtt.connect_failed` | `host`, `port`, and `reason_code`, `reason` unless the TCP connection itself failed | A connect attempt failed. |
 | `mqtt.discovery_published` | `sensors` | After each connect. |
 | `mqtt.publish_failed` | `topic`, `error`, `rc` | A publish was dropped. |
 | `camera.callback_failed` | `camera`, `callback`, `error`, `traceback` | A bug; the service stops. |
@@ -376,9 +384,10 @@ so logs cannot supply them.
   revoked, or empty. See [Rotating the LunaRoute key](#rotating-the-lunaroute-key).
 - `LunaRoute request failed: ConnectTimeout` or `ReadTimeout`: no route to
   `gw.lunaroute.com`, or `timeout_seconds` is too short.
-- Every request fails with an HTTP error after a LunaRoute change: the
-  request limit may have moved. The `message` field quotes the gateway's
-  reason; see [Images sent to Djev](#images-sent-to-djev).
+- Every request fails with `LunaRoute returned HTTP 400` and a `message`
+  that includes "the request exceeds this model's max_input_tokens of
+  32768": the gateway's limit has moved below the service's request budget.
+  See [Images sent to Djev](#images-sent-to-djev).
 - A sensor stays unavailable after a failure until a new change triggers a
   request that succeeds.
 - `inference.invalid_response`: Djev answered without a usable probability.
@@ -386,16 +395,25 @@ so logs cannot supply them.
 
 ### MQTT
 
-- `mqtt.connect_failed` with a reason such as "Not authorized": check
-  `username` and the variable `password_env` names. Without a reason, the
-  service could not open a TCP connection to `host` and `port`.
+- `mqtt.connect_failed` with a reason such as "Not authorized": the broker
+  refused the service. Check `username` and the variable `password_env` names.
+- `mqtt.connect_failed` with the reason "Unspecified error": the connection
+  closed before the broker accepted it, as when `port` is a TLS listener or a
+  service that does not speak MQTT. "Keep alive timeout" means nothing
+  answered for 60 seconds.
+- `mqtt.connect_failed` with no reason: the service could not open a TCP
+  connection to `host` and `port`.
 - No entities in Home Assistant: its MQTT integration needs discovery on and
   the same `discovery_prefix`. Look for the retained configs with
   `mosquitto_sub -h <broker> -t 'homeassistant/binary_sensor/djev_sensors/#' -v`.
 - Entities stay unavailable: read the two availability topics above to see
   whether the service or the camera and model are down.
 - Two instances on one broker need different `client_id` and `topic_prefix`
-  values.
+  values, and different sensor IDs. The discovery node ID, `djev_sensors`, is
+  fixed, so both publish discovery configs under
+  `<discovery_prefix>/binary_sensor/djev_sensors/`, and one sensor ID in both
+  would share a config topic and a unique ID. Their sensors also share one
+  device, "Djev Vision Sensors".
 
 ### Startup
 
@@ -406,6 +424,30 @@ so logs cannot supply them.
   container started before `config.yaml` existed, so Docker created a
   directory in its place. Remove the directory, create the file, and run
   `docker compose up -d`.
+- `could not read config file /app/config.yaml: [Errno 13] Permission denied`:
+  the container's user, UID 10001, cannot read the file. Run
+  `chmod 644 config.yaml`.
+
+## Removing or renaming a sensor
+
+Removing a sensor from `config.yaml`, or changing its ID, leaves its old
+entity in Home Assistant, because the broker keeps the retained discovery
+config. The service's clean stop marks every configured sensor `offline`, so
+after you remove one and restart the service, its old entity shows
+unavailable. After a crash or `docker kill`, the old sensor's availability
+keeps its last value, so its entity can still show available.
+
+To delete the old entity, clear its two retained topics on the broker:
+
+```sh
+mosquitto_pub -h <broker> -r -n -t '<discovery_prefix>/binary_sensor/djev_sensors/<sensor_id>/config'
+mosquitto_pub -h <broker> -r -n -t '<topic_prefix>/<sensor_id>/availability'
+```
+
+The prefixes default to `homeassistant` and `djev-sensors`; add `-u` and `-P`
+if the broker needs a login. `-r -n` publishes an empty retained message,
+which clears the retained one, and Home Assistant deletes an entity whose
+discovery topic receives an empty payload.
 
 ## Rotating the LunaRoute key
 
@@ -432,13 +474,17 @@ leaks, rotate it before any live request.
 runs all of that, then the end-to-end tests in `tests/e2e`.
 
 Prerequisites for both: uv, Docker running (the integration tests start
-MediaMTX and Mosquitto on 127.0.0.1:18554 and 18883, which must be free), and
-FFmpeg on `PATH` (the RTSP tests publish with it). `--live` also needs:
+MediaMTX and Mosquitto on 127.0.0.1:18554 and 18883, which must be free), the
+repository in a directory the Docker engine shares with containers (the test
+stacks mount files from it, and Colima shares only your home directory by
+default), and FFmpeg on `PATH` (the RTSP tests publish with it). `--live`
+also needs:
 
 - a rotated LunaRoute key in `LUNAROUTE_API_KEY`; the live tests fail, not
   skip, without one;
-- internet access to `gw.lunaroute.com` and to pull
-  `ghcr.io/home-assistant/home-assistant:stable`;
+- internet access to `gw.lunaroute.com`, to pull
+  `ghcr.io/home-assistant/home-assistant:stable`, and to pull the service
+  image's bases, `python:3.12-slim` and `ghcr.io/astral-sh/uv:0.9.25`;
 - 127.0.0.1:18123, 18555, and 18884 free, for Home Assistant, RTSP, and MQTT.
 
 The end-to-end tests build the service image from the `Dockerfile`, onboard a

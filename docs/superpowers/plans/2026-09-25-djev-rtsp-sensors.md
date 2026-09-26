@@ -12,8 +12,8 @@
 
 ## Now
 - Step: merge into main approved (finishing option 1): fast-forward `wip/djev-sensors-plan` into `main`, then delete the branch
-- Next: after Doctor Biz rotates the LunaRoute key and exports `LUNAROUTE_API_KEY`, run `uv run pytest tests/e2e/test_lunaroute_live.py -q`, then `uv run pytest tests/e2e -q -k "home_assistant and djev"`, then `scripts/check --live`; then choose a finishing option (no git remote, so merge locally or keep the branch)
-- Open: key rotation (the old key from test.sh is still `OPENAI_COMPAT_API_KEY` in ~/.config/tracker/.env and, per local notes, in ~/.pi/agent/auth.json); merge direction; spec section 37 says HA state is "initially unknown" after a service restart, but HA keeps its cached state
+- Next: after Doctor Biz rotates the LunaRoute key and exports `LUNAROUTE_API_KEY`, run `uv run pytest tests/e2e/test_lunaroute_live.py -q`, then `uv run pytest tests/e2e -q -k "home_assistant and djev"`, then `scripts/check --live`
+- Open: key rotation (the old key from test.sh is still `OPENAI_COMPAT_API_KEY` in ~/.config/tracker/.env and, per local notes, in ~/.pi/agent/auth.json); spec section 37 says HA state is "initially unknown" after a service restart, but HA keeps its cached state
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
 - Compactions: 0

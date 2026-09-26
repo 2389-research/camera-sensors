@@ -11,11 +11,12 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: merge into main approved (finishing option 1): fast-forward `wip/djev-sensors-plan` into `main`, then delete the branch
-- Next: after Doctor Biz rotates the LunaRoute key and exports `LUNAROUTE_API_KEY`, run `uv run pytest tests/e2e/test_lunaroute_live.py -q`, then `uv run pytest tests/e2e -q -k "home_assistant and djev"`, then `scripts/check --live`
-- Open: key rotation (the old key from test.sh is still `OPENAI_COMPAT_API_KEY` in ~/.config/tracker/.env and, per local notes, in ~/.pi/agent/auth.json); spec section 37 says HA state is "initially unknown" after a service restart, but HA keeps its cached state
+- Step: live gates with the existing LunaRoute key, then two hardening fixes (image readable from a strict-umask checkout; rejected secrets out of chained config errors), on `wip/live-gates-hardening`
+- Next: one `scripts/check --live` run with `LUNAROUTE_API_KEY` set, then the finishing options
+- Open: spec section 37 says HA state is "initially unknown" after a service restart, but HA keeps its cached state
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
+- Approved: "the old one isn't exposed. do 2, and 3" (2026-09-25) — run the live gates with the existing LunaRoute key (no rotation); fix the two before-shipping items
 - Compactions: 0
 
 ## Global Constraints

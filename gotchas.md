@@ -8,9 +8,9 @@ Doctor Biz approved keeping decoded frames at source resolution in memory and re
 
 Do not overwrite sampled frames in a latest-only queue before change detection. The comparison baseline must advance through every sampled frame, even one that triggers no sensor. Schedule inference in the background after that comparison.
 
-## Exposed key in local smoke script
+## LunaRoute key in the local smoke script
 
-`test.sh` once held a literal LunaRoute bearer token. Commit 61ee4d9 began tracking it only after the token gave way to `LUNAROUTE_API_KEY`, and no other commit touches it, so neither the file nor history holds the token. The key it exposed must still be rotated before any live test. Never stage or copy a key.
+`test.sh` once held a literal LunaRoute bearer token. Commit 61ee4d9 began tracking it only after the token gave way to `LUNAROUTE_API_KEY`, and no other commit touches it, so neither the file nor history holds the token. Doctor Biz ruled on 2026-09-25 that this key is not exposed, so it needs no rotation before live tests. The build had treated it as compromised and parked every live gate for hours. Keep keys out of commits and logs, but don't call a key exposed, or block work on rotating it, unless it was committed, pushed, or pasted somewhere shared; when unsure, ask. Never stage or copy a key.
 
 ## ABOUTME lines can turn into encoding declarations
 

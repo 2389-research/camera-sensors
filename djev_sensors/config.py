@@ -25,7 +25,8 @@ DEFAULT_PROMPT_WRAPPER = (
     "Do not assume facts that cannot be seen."
 )
 
-_ID_PATTERN = re.compile(r"^[a-z0-9_]+$")
+# Used with fullmatch: a `$` anchor would also accept an ID ending in a newline.
+_ID_PATTERN = re.compile(r"[a-z0-9_]+")
 # <topic_prefix>/service/availability is the whole service's availability topic.
 SERVICE_TOPIC_ID = "service"
 _ENV_TOKEN_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -93,7 +94,7 @@ def _expand_env_tokens(value: str, env: Mapping[str, str]) -> str:
 
 def _validate_ids(ids: Iterable[str], kind: str) -> None:
     for id_ in ids:
-        if not _ID_PATTERN.match(id_):
+        if not _ID_PATTERN.fullmatch(id_):
             raise ValueError(f"invalid {kind} id {id_!r}: must match [a-z0-9_]+")
 
 

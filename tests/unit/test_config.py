@@ -380,6 +380,25 @@ sensors:
         load_config(path, BASE_ENV)
 
 
+@pytest.mark.parametrize(
+    ("camera_id", "sensor_id", "kind"),
+    [("garage\n", "car", "camera"), ("garage", "car\n", "sensor")],
+    ids=["camera", "sensor"],
+)
+def test_an_id_ending_in_a_newline_is_rejected(
+    tmp_path: Path, camera_id: str, sensor_id: str, kind: str
+) -> None:
+    # A quoted YAML key can end in a newline, and a `$` anchor matches just
+    # before one; the newline would reach MQTT topics and Home Assistant IDs.
+    config = _config_dict()
+    config["cameras"] = {camera_id: {"rtsp": "${GARAGE_RTSP_URL}"}}
+    config["sensors"] = {
+        sensor_id: {"name": "Car", "camera": camera_id, "prompt": "Is a car visible?"}
+    }
+    with pytest.raises(ConfigError, match=f"invalid {kind} id"):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
 def test_unknown_top_level_key_is_rejected(tmp_path: Path) -> None:
     path = _write(
         tmp_path,

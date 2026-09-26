@@ -8,6 +8,9 @@ RUN uv sync --locked --no-dev
 # The service needs no privileges, so it runs as an unprivileged system user.
 # uv run needs a writable cache, which it keeps under the user's home directory.
 RUN useradd --system --uid 10001 --create-home djev
-USER djev
 COPY djev_sensors ./djev_sensors
+# COPY keeps the build context's file modes, and a checkout made under a strict
+# umask leaves them readable by their owner alone, so open them to the service user.
+RUN chmod -R a+rX pyproject.toml uv.lock djev_sensors
+USER djev
 CMD ["uv", "run", "--no-sync", "python", "-m", "djev_sensors", "--config", "/app/config.yaml"]

@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: roborev findings fixed on `wip/roborev-fixes` (14 valid items, `scripts/check --live` green); all 30 open roborev reviews commented and closed; four failed reviews re-queued (jobs 251-254)
-- Next: Doctor Biz picks a finishing option for `wip/roborev-fixes`; redeploying docker-host rebuilds the two-stage image there
+- Step: merge `wip/roborev-fixes` into `main` approved (finishing option 1); roborev findings fixed, `scripts/check --live` green, 30 roborev reviews closed
+- Next: none required; docker-host still runs the previous main until Doctor Biz asks for a redeploy; 12 roborev reviews (jobs 243-254) are still queued or running
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19)
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
@@ -21,6 +21,7 @@
 - Approved: "sure. also push" (2026-09-25) — amend spec section 37 so a service restart keeps HA's last state; push `main` to origin
 - Approved: "let's merge the rechecks, and deploy to docker host" (2026-09-26) — merge `wip/sensor-rechecks` into main; deploy to docker-host once its CPU allows
 - Approved: "can you fix all the roborev issues" (2026-09-26) — fix every still-valid roborev finding, including spec wording clarifications V9-V11 that change no behavior
+- Approved: "1" (2026-09-26) — finishing option 1 for `wip/roborev-fixes`, merge back to main locally
 - Compactions: 0
 
 ## Global Constraints

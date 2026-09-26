@@ -11,13 +11,14 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: v0.1 done; merge `wip/live-gates-hardening` into `main` approved (finishing option 1), then delete the branch. `scripts/check --live` passed at b1cae03 (195 unit and integration tests, 8 end-to-end tests)
-- Next: none required; GitHub `origin/main` stays behind local `main` until Doctor Biz asks for a push
-- Open: spec section 37 says HA state is "initially unknown" after a service restart, but HA keeps its cached state
+- Step: v0.1 done and merged; amend spec section 37's restart row to match Home Assistant's behavior, then push `main` to GitHub
+- Next: none
+- Open: none
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
 - Approved: "the old one isn't exposed. do 2, and 3" (2026-09-25) — run the live gates with the existing LunaRoute key (no rotation); fix the two before-shipping items
 - Approved: "1" (2026-09-25) — finishing option 1 for `wip/live-gates-hardening`, merge back to main locally
+- Approved: "sure. also push" (2026-09-25) — amend spec section 37 so a service restart keeps HA's last state; push `main` to origin
 - Compactions: 0
 
 ## Global Constraints

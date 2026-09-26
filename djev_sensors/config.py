@@ -155,10 +155,10 @@ class MqttConfig(BaseModel):
     @field_validator("discovery_prefix", "topic_prefix")
     @classmethod
     def _prefix_is_a_topic_level(cls, value: str) -> str:
-        """A prefix starts published topics, so it must be a valid topic name part.
+        """Each prefix starts topic names, where MQTT allows no wildcard.
 
-        A wildcard in `topic_prefix` would reach the Last Will topic too, and
-        the broker closes a connection whose CONNECT carries one.
+        A wildcard in `topic_prefix` would reach the Last Will topic too,
+        which would make the CONNECT itself invalid.
         """
         if not value:
             raise ValueError("must not be empty")

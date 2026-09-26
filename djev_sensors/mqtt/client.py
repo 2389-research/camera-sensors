@@ -300,8 +300,9 @@ class MqttPublisher:
         elif reason_code.is_failure and not refused:
             # The connection ended before any CONNACK: the peer closed it, as a
             # TLS listener or a service that does not speak MQTT does, or no
-            # CONNACK came within the keepalive. _on_connect already logged a
-            # refusal, and our own disconnect is not a failure.
+            # CONNACK came within the keepalive. Paho also calls this after a
+            # refused connect, which _on_connect already logged, and after our
+            # own disconnect, which is no failure.
             mqtt_config = self._config.system.mqtt
             log_event(
                 "mqtt.connect_failed",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import socket
 import threading
 from collections.abc import Iterator
@@ -185,6 +186,23 @@ def test_a_2xx_without_a_valid_noul_raises_invalid_model_response(
 
     with pytest.raises(InvalidModelResponse):
         _evaluate(contract_server.url, INSTRUCTIONS)
+
+
+def test_no_log_record_carries_the_api_key(
+    contract_server: _ContractServer, caplog: pytest.LogCaptureFixture
+) -> None:
+    # This holds only while httpx and httpcore keep header values out of their
+    # log lines, so it watches every logger at DEBUG through a whole request.
+    caplog.set_level(logging.DEBUG)
+    for name in ("httpx", "httpcore"):
+        caplog.set_level(logging.DEBUG, logger=name)
+    contract_server.set_response(200, _noul_body("0.83"))
+
+    _evaluate(contract_server.url, INSTRUCTIONS)
+
+    transport = [r for r in caplog.records if r.name.startswith(("httpx", "httpcore"))]
+    assert transport, "httpx and httpcore logged nothing, so this proved nothing"
+    assert FAKE_KEY not in caplog.text
 
 
 def test_non_2xx_status_raises_model_error(contract_server: _ContractServer) -> None:

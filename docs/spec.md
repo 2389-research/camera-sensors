@@ -1211,7 +1211,8 @@ No persistent volume is required.
 | RTSP fails | `unavailable` |
 | RTSP recovers | availability may recover |
 | Djev later succeeds | model availability recovers |
-| Service restarts | state initially unknown |
+| Service restarts | `unavailable` until the camera connects, then the last state HA received, until a new judgment |
+| Home Assistant restarts | unknown until the next state message, because state is not retained |
 | MQTT reconnects | do not republish previous state |
 | No evaluation for a long time | retain previous state |
 

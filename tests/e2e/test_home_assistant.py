@@ -312,14 +312,25 @@ class Service:
     def kill(self) -> None:
         compose("kill", "--signal", "SIGKILL", SERVICE)
 
+    def stop(self) -> None:
+        """SIGTERM the container, as `docker compose stop` does, and wait for it.
+
+        Compose sends SIGKILL if it still runs after its 15 s grace period.
+        """
+        compose("stop", SERVICE)
+
+    def exit_code(self) -> int:
+        """The exit status of the container, which must have stopped."""
+        return int(compose("ps", "--all", "--format", "{{.ExitCode}}", SERVICE).stdout)
+
+    def events(self) -> list[dict[str, Any]]:
+        """The structured events the container has logged, in order."""
+        logs = compose("logs", "--no-color", "--no-log-prefix", SERVICE).stdout
+        return [json.loads(line) for line in logs.splitlines() if line.startswith("{")]
+
     def event_names(self) -> list[str]:
         """The names of the structured events the container has logged, in order."""
-        logs = compose("logs", "--no-color", "--no-log-prefix", SERVICE).stdout
-        return [
-            json.loads(line)["event"]
-            for line in logs.splitlines()
-            if line.startswith("{")
-        ]
+        return [event["event"] for event in self.events()]
 
     def remove(self) -> None:
         """Print the container's logs, then stop and remove the container.
@@ -552,6 +563,32 @@ def test_killing_the_service_fires_the_shared_last_will(
     # The broker marked every sensor's shared topic offline, while this sensor's
     # own topic, which only the dead service could change, still says online.
     assert retained["djev-sensors/last_will_scene/availability"] == "online"
+
+
+def test_stopping_the_service_marks_it_offline_and_exits_cleanly(
+    home_assistant: HomeAssistant,
+    service: Service,
+    start_publisher: Callable[..., Publisher],
+) -> None:
+    start_publisher(STATIC_PATH)
+    sensor_id = "clean_stop_scene"
+    service.start(static_scene(sensor_id, "Clean Stop Scene"), FAKE_API_KEY)
+    entity_id = f"binary_sensor.{sensor_id}"
+    home_assistant.wait_for_state(entity_id, "unknown")
+    assert_no_model_request(service)
+
+    service.stop()
+
+    # The service finished its own shutdown before any SIGKILL could cut it short.
+    assert service.events()[-1] == {"event": "service.stopped"}
+    assert service.exit_code() == 0
+    home_assistant.wait_for_state(entity_id, "unavailable")
+    retained = wait_for_retained(
+        "the service's own offline",
+        lambda retained: retained.get(SERVICE_AVAILABILITY_TOPIC) == "offline",
+    )
+    # Unlike a kill, a clean stop also marks the sensor's own topic offline.
+    assert retained[f"djev-sensors/{sensor_id}/availability"] == "offline"
 
 
 def test_a_broker_restart_brings_back_discovery_and_availability_without_state(

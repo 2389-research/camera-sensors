@@ -33,11 +33,11 @@ class MqttPublisher:
     are published once, only while connected, and never replayed.
 
     Paho runs the connection callbacks on its network thread while callers
-    publish from theirs, so `_lock` guards the connection flag and the
-    availability record. The connect callback holds it while it publishes, so
-    an availability change cannot slip between its read and its publish;
-    callers release it before calling paho, whose own locks the network thread
-    may hold while it runs a callback.
+    publish from theirs, so `_lock` guards the connection and refusal flags
+    and the availability record. The connect callback holds it while it
+    publishes, so an availability change cannot slip between its read and its
+    publish; callers release it before calling paho, whose own locks the
+    network thread may hold while it runs a callback.
     """
 
     def __init__(self, config: AppConfig) -> None:
@@ -45,6 +45,8 @@ class MqttPublisher:
         self._service_topic = discovery.service_availability_topic(config)
         self._lock = threading.Lock()
         self._connected = False
+        # Set when the broker refuses a connect, whose disconnect follows at once.
+        self._connect_refused = False
         self._availability = dict.fromkeys(config.sensors, False)
         self._first_connect = threading.Event()
         self._client = mqtt.Client(
@@ -77,16 +79,24 @@ class MqttPublisher:
         self._client.loop_start()
 
     def stop(self) -> None:
-        """Mark the service offline, disconnect, and stop the network thread.
+        """Mark the sensors and the service offline, disconnect, and stop the thread.
 
         A clean disconnect cancels the Last Will, so while connected this
-        first publishes the retained "offline" and waits up to
-        OFFLINE_ACK_TIMEOUT_SECONDS for the broker to acknowledge it. While
-        disconnected, the broker publishes the lost connection's Last Will.
+        first publishes each sensor's retained "offline", then the service's,
+        and waits up to OFFLINE_ACK_TIMEOUT_SECONDS for the broker to
+        acknowledge the service's. A sensor removed from the config before
+        the next start then stays unavailable rather than showing its last
+        state. While disconnected, the broker publishes the lost connection's
+        Last Will, which covers only the service.
         """
         with self._lock:
             connected = self._connected
         if connected:
+            for sensor_id in self._config.sensors:
+                self._publish_availability(sensor_id, False)
+            # Paho writes packets in the order they are published, and TCP
+            # keeps that order, so once the broker acknowledges this QoS 1
+            # message, the QoS 0 sensor messages before it have arrived too.
             info = self._publish(
                 self._service_topic, discovery.PAYLOAD_NOT_AVAILABLE, qos=1, retain=True
             )
@@ -235,6 +245,8 @@ class MqttPublisher:
         mqtt_config = self._config.system.mqtt
         if reason_code.is_failure:
             # The broker refused, as for bad credentials; paho closes and retries.
+            with self._lock:
+                self._connect_refused = True
             log_event(
                 "mqtt.connect_failed",
                 level=logging.WARNING,
@@ -276,11 +288,26 @@ class MqttPublisher:
         with self._lock:
             was_connected = self._connected
             self._connected = False
-        # Paho also calls this after a refused connect, which was never connected.
+            refused = self._connect_refused
+            self._connect_refused = False
         if was_connected:
             log_event(
                 "mqtt.disconnected",
                 level=logging.WARNING if reason_code.is_failure else logging.INFO,
+                reason_code=reason_code.value,
+                reason=str(reason_code),
+            )
+        elif reason_code.is_failure and not refused:
+            # The connection ended before any CONNACK: the peer closed it, as a
+            # TLS listener or a service that does not speak MQTT does, or no
+            # CONNACK came within the keepalive. _on_connect already logged a
+            # refusal, and our own disconnect is not a failure.
+            mqtt_config = self._config.system.mqtt
+            log_event(
+                "mqtt.connect_failed",
+                level=logging.WARNING,
+                host=mqtt_config.host,
+                port=mqtt_config.port,
                 reason_code=reason_code.value,
                 reason=str(reason_code),
             )

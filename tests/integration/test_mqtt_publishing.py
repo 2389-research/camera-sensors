@@ -542,6 +542,42 @@ def test_stop_leaves_the_service_offline_and_never_logs_the_password(
     assert password not in caplog.text
 
 
+def test_stop_marks_every_sensor_offline_before_the_service(
+    mqtt_address: tuple[str, int],
+) -> None:
+    # A sensor removed from the config before the next start then stays
+    # unavailable in Home Assistant instead of showing its last state.
+    config = validate(raw_config(mqtt_address))
+    service = service_availability_topic(config)
+    sensors = [availability_topic(s, config) for s in ("gate_open", "car_present")]
+    filters = [f"{config.system.mqtt.topic_prefix}/#"]
+    publisher = MqttPublisher(config)
+    publisher.publish_availability("gate_open", True)
+    publisher.publish_availability("car_present", True)
+    with Subscriber(mqtt_address, filters) as live:
+        publisher.start()
+        try:
+            live.wait_for("the connect announcement", lambda m: len(m) >= 3)
+        finally:
+            publisher.stop()
+        received = live.wait_for(
+            "the service offline",
+            lambda m: payloads(m, service) == ["online", "offline"],
+        )
+    with Subscriber(mqtt_address, filters) as late:
+        retained = late.sync()
+
+    assert [(m.topic, m.payload, m.qos) for m in received] == [
+        (service, "online", 1),
+        *[(topic, "online", 0) for topic in sensors],
+        *[(topic, "offline", 0) for topic in sensors],
+        (service, "offline", 1),
+    ]
+    assert sorted((m.topic, m.payload, m.retain) for m in retained) == sorted(
+        [(topic, "offline", True) for topic in (service, *sensors)]
+    )
+
+
 def test_the_first_connect_signal_waits_until_discovery_is_published(
     mqtt_address: tuple[str, int], caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -649,6 +685,45 @@ def test_a_refused_connection_is_logged_and_never_counts_as_connected(
                 "event": "mqtt.publish_failed",
                 "topic": state_topic("gate_open", config),
                 **NOT_CONNECTED,
+            },
+        ),
+    ]
+
+
+def test_a_connection_closed_before_connack_is_logged_as_a_failed_connect(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # As when the port serves TLS or another protocol: the server takes the
+    # connection, reads the CONNECT, and closes the connection unanswered.
+    caplog.set_level(logging.INFO, logger="djev_sensors")
+    with socket.create_server(("127.0.0.1", 0)) as server:
+        server.settimeout(TIMEOUT)
+        port = server.getsockname()[1]
+        publisher = MqttPublisher(validate(raw_config(("127.0.0.1", port))))
+        publisher.start()
+        try:
+            connection, _ = server.accept()
+            with connection:
+                connection.settimeout(TIMEOUT)
+                connection.recv(4096)  # the CONNECT packet
+            wait_until(
+                lambda: "mqtt.connect_failed" in event_names(caplog),
+                "the failed connect to be logged",
+            )
+            assert not publisher.wait_for_first_connect(0)
+        finally:
+            publisher.stop()
+
+    # Paho reports the closed connection as "Unspecified error".
+    assert logged(caplog) == [
+        (
+            logging.WARNING,
+            {
+                "event": "mqtt.connect_failed",
+                "host": "127.0.0.1",
+                "port": port,
+                "reason_code": 128,
+                "reason": "Unspecified error",
             },
         ),
     ]

@@ -82,6 +82,19 @@ def test_noisy_frame_shrinks_below_source_resolution() -> None:
     assert len(body) <= BODY_BYTE_BUDGET
 
 
+def test_djev_limit_caps_the_longest_side_at_2048_pixels_under_any_budget() -> None:
+    # Djev rejects images over 2048 pixels per side. At the default budget the
+    # budget alone would shrink this flat frame to 1600x1200, so a huge budget
+    # leaves the cap as the only reason to shrink it.
+    frame = np.full((3072, 4096, 3), 128, dtype=np.uint8)
+
+    body, width, height = _fit_request_body(frame, INSTRUCTIONS, "djev", budget=10**8)
+
+    assert (width, height) == (2048, 1536)
+    decoded = _decode_image_field(json.loads(body))
+    assert decoded.shape[:2] == (1536, 2048)
+
+
 def test_every_fitted_body_is_at_most_the_byte_budget() -> None:
     for frame in (_compressible_frame(), _noisy_frame()):
         body, _width, _height = _fit_request_body(frame, INSTRUCTIONS, "djev")

@@ -83,3 +83,7 @@ docker-host (192.168.200.8, SSH as harper, login shell fish) is a KVM guest. Unt
 ## LunaRoute latency can blow past the model timeout
 
 On 2026-09-25 around 04:17-04:21 UTC, LunaRoute answers went from about 0.7 s to 7-14 s, a text-only smoke request took 47 s, and requests at the default 15 s `timeout_seconds` failed with ReadTimeout. Each timeout marks the sensor unavailable until the next successful look (spec section 19), so a slow gateway looks like a flapping sensor in Home Assistant. The couch deployment uses `timeout_seconds: 60`.
+
+## The office cameras run on aibox03, not officetools
+
+The office UniFi Protect streams (NVR at 192.168.23.1) are mostly 4K, and decoding one costs about half a core (measured 0.53 on officetools, 2026-09-26). officetools (192.168.23.123) has only 4 virtual cores, a load near 2.3, and about 2 GB of free disk, so the seven office cameras went to aibox03 (192.168.23.86): a bare-metal i9-13900K with 32 threads and 62 GB, where they use about 2.75 cores and 1.2 GB. aibox03 runs them from ~/camera-sensors and publishes to the office Mosquitto on officetools (192.168.23.123:1883, anonymous). 4K buys nothing here: change detection works at 320 pixels wide and the request budget shrinks what Djev sees to about 768x432, so a camera's Medium (720p) RTSP channel would do the same job for about a ninth of the decode cost.

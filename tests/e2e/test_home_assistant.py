@@ -321,6 +321,18 @@ class Service:
             if line.startswith("{")
         ]
 
+    def remove(self) -> None:
+        """Print the container's logs, then stop and remove the container.
+
+        The removal runs even when reading the logs fails, so the next test
+        never reuses a stale container.
+        """
+        try:
+            # pytest shows this only when the test fails.
+            print(compose("logs", "--no-color", "--no-log-prefix", SERVICE).stdout)
+        finally:
+            compose("rm", "--stop", "--force", SERVICE)
+
 
 def service_config(
     sensor_id: str, sensor: Mapping[str, object], rtsp_path: str
@@ -444,12 +456,11 @@ def service_image(stack: None) -> None:
 @pytest.fixture
 def service(service_image: None) -> Iterator[Service]:
     """The service's container, removed after the test."""
+    service = Service()
     try:
-        yield Service()
+        yield service
     finally:
-        # pytest shows this only when the test fails.
-        print(compose("logs", "--no-color", "--no-log-prefix", SERVICE).stdout)
-        compose("rm", "--stop", "--force", SERVICE)
+        service.remove()
 
 
 @pytest.fixture

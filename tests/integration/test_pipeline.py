@@ -293,8 +293,8 @@ class RecordingPublisher:
         """Complete the first connect, as MqttPublisher does once discovery is out."""
         self._first_connect.set()
 
-    def wait_for_first_connect(self, timeout: float | None = None) -> bool:
-        return self._first_connect.wait(timeout)
+    def has_connected(self) -> bool:
+        return self._first_connect.is_set()
 
     def stop(self) -> None:
         self._lifecycle.append("publisher.stop")
@@ -339,6 +339,8 @@ def make_harness(
     detector: ChangeDetector | None = None,
     *,
     publisher_connects: bool = True,
+    hub_stop_timeout_seconds: float = app_module.HUB_STOP_TIMEOUT_SECONDS,
+    drain_timeout_seconds: float = app_module.DRAIN_TIMEOUT_SECONDS,
 ) -> Harness:
     """The app wired to the real hub, scheduler, and (by default) detector."""
     config = make_config()
@@ -358,6 +360,8 @@ def make_harness(
         SensorScheduler(config, model, publisher),
         publisher,
         model,
+        hub_stop_timeout_seconds=hub_stop_timeout_seconds,
+        drain_timeout_seconds=drain_timeout_seconds,
     )
     return Harness(app, hub, model, publisher, lifecycle)
 
@@ -586,14 +590,15 @@ def test_shutdown_lets_a_running_evaluation_finish_and_publish_first() -> None:
     assert h.lifecycle == LIFECYCLE
 
 
-def test_shutdown_cancels_an_evaluation_still_running_at_the_drain_bound(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(app_module, "DRAIN_TIMEOUT_SECONDS", 0.3)
+def test_shutdown_cancels_an_evaluation_still_running_at_the_drain_bound() -> None:
     before = solid(60)
     stop = threading.Event()
     source = ScriptedCamera([[before, small_change(before), Stop()]], stop)
-    h = make_harness(source, {CAR: [Held(judgment(0.9))]})  # never released
+    h = make_harness(
+        source,
+        {CAR: [Held(judgment(0.9))]},  # never released
+        drain_timeout_seconds=0.3,
+    )
 
     run_app(h.app, stop)
 
@@ -603,14 +608,11 @@ def test_shutdown_cancels_an_evaluation_still_running_at_the_drain_bound(
     assert h.lifecycle == LIFECYCLE
 
 
-def test_shutdown_stops_waiting_for_a_stalled_camera_hub_at_its_bound(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(app_module, "HUB_STOP_TIMEOUT_SECONDS", 0.5)
+def test_shutdown_stops_waiting_for_a_stalled_camera_hub_at_its_bound() -> None:
     stop = threading.Event()
     stall = Stall()
     source = ScriptedCamera([[solid(60), stall]], stop)
-    h = make_harness(source, {})
+    h = make_harness(source, {}, hub_stop_timeout_seconds=0.5)
     hub_threads_before = camera_hub_threads()
 
     started = time.monotonic()

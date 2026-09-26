@@ -321,10 +321,7 @@ def test_a_connect_announces_retained_config_and_availability_but_state_is_not_r
             )
             publisher.publish_state("gate_open", True)
             publisher.publish_attributes("gate_open", ATTRIBUTES)
-            publisher.publish_discovery()
-            received = live.wait_for(
-                "state, attributes, and discovery again", lambda m: len(m) >= 9
-            )
+            received = live.wait_for("state and attributes", lambda m: len(m) >= 7)
             with Subscriber(mqtt_address, topic_filters(config)) as late:
                 retained = late.sync()
         finally:
@@ -350,8 +347,6 @@ def test_a_connect_announces_retained_config_and_availability_but_state_is_not_r
         *announcement,
         (state_topic("gate_open", config), "ON", 0),
         (attributes_topic("gate_open", config), ATTRIBUTES, 0),
-        # publish_discovery() while connected sends both configs again.
-        *announcement[1:3],
     ]
     # A later subscriber gets only retained messages, each flagged retained:
     # the announcement, and never the state or the attributes.
@@ -583,17 +578,17 @@ def test_the_first_connect_signal_waits_until_discovery_is_published(
 ) -> None:
     caplog.set_level(logging.INFO, logger="djev_sensors")
     publisher = MqttPublisher(validate(raw_config(mqtt_address)))
-    assert not publisher.wait_for_first_connect(0)
+    assert not publisher.has_connected()
     publisher.start()
     try:
-        assert publisher.wait_for_first_connect(TIMEOUT)
+        wait_until(publisher.has_connected, "the first connect")
         logged_by_then = event_names(caplog)
     finally:
         publisher.stop()
 
     assert logged_by_then == ["mqtt.connected", "mqtt.discovery_published"]
     # It records the first connect, so it stays set after the disconnect.
-    assert publisher.wait_for_first_connect(0)
+    assert publisher.has_connected()
 
 
 def test_publishing_while_disconnected_logs_and_drops_state_and_attributes(
@@ -609,13 +604,12 @@ def test_publishing_while_disconnected_logs_and_drops_state_and_attributes(
             lambda: "mqtt.connect_failed" in event_names(caplog),
             "a failed connection attempt",
         )
-        assert not publisher.wait_for_first_connect(0)
+        assert not publisher.has_connected()
         publisher.publish_state("gate_open", True)
         publisher.publish_attributes("gate_open", ATTRIBUTES)
         publisher.publish_attributes("gate_open", {"frame": b"\xff\xd8"})
-        # Availability and discovery wait for the next connect instead.
+        # Availability waits for the next connect instead.
         publisher.publish_availability("gate_open", True)
-        publisher.publish_discovery()
     finally:
         publisher.stop()
 
@@ -663,7 +657,7 @@ def test_a_refused_connection_is_logged_and_never_counts_as_connected(
                     lambda: "mqtt.connect_failed" in event_names(caplog),
                     "the refusal to be logged",
                 )
-            assert not publisher.wait_for_first_connect(0)
+            assert not publisher.has_connected()
             publisher.publish_state("gate_open", True)
         finally:
             publisher.stop()
@@ -710,7 +704,7 @@ def test_a_connection_closed_before_connack_is_logged_as_a_failed_connect(
                 lambda: "mqtt.connect_failed" in event_names(caplog),
                 "the failed connect to be logged",
             )
-            assert not publisher.wait_for_first_connect(0)
+            assert not publisher.has_connected()
         finally:
             publisher.stop()
 

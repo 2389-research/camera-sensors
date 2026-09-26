@@ -89,9 +89,7 @@ class MqttPublisher:
         state. While disconnected, the broker publishes the lost connection's
         Last Will, which covers only the service.
         """
-        with self._lock:
-            connected = self._connected
-        if connected:
+        if self._is_connected():
             for sensor_id in self._config.sensors:
                 self._publish_availability(sensor_id, False)
             # Paho writes packets in the order they are published, and TCP
@@ -111,23 +109,12 @@ class MqttPublisher:
         self._client.on_connect_fail = None
         self._client.on_disconnect = None
 
-    def wait_for_first_connect(self, timeout: float | None = None) -> bool:
-        """Block until a connect has published discovery, or `timeout` seconds pass.
+    def has_connected(self) -> bool:
+        """Whether a connect has published discovery yet; never blocks.
 
-        Returns whether one has. It stays true through later disconnects.
+        It stays true through later disconnects.
         """
-        return self._first_connect.wait(timeout)
-
-    def publish_discovery(self) -> None:
-        """Publish every sensor's retained discovery config, if connected.
-
-        Every connect publishes discovery anyway, so while disconnected this
-        does nothing.
-        """
-        with self._lock:
-            connected = self._connected
-        if connected:
-            self._publish_discovery()
+        return self._first_connect.is_set()
 
     def publish_state(self, sensor_id: str, state: bool) -> None:
         """Publish ON or OFF once, not retained, if connected."""
@@ -146,12 +133,7 @@ class MqttPublisher:
         try:
             payload = json.dumps(dict(attributes), allow_nan=False)
         except (TypeError, ValueError) as exc:
-            log_event(
-                "mqtt.publish_failed",
-                level=logging.WARNING,
-                topic=topic,
-                error=str(exc),
-            )
+            self._log_publish_failed(topic, exc)
             return
         self._publish_event(topic, payload)
 
@@ -194,11 +176,13 @@ class MqttPublisher:
                 published += 1
         log_event("mqtt.discovery_published", sensors=published)
 
+    def _is_connected(self) -> bool:
+        with self._lock:
+            return self._connected
+
     def _publish_event(self, topic: str, payload: str) -> None:
         """Publish at QoS 0, not retained, if connected; otherwise log and drop it."""
-        with self._lock:
-            connected = self._connected
-        if not connected:
+        if not self._is_connected():
             # Dropped here, never handed to paho, so no later connection sends it.
             self._log_publish_failed(topic, MQTTErrorCode.MQTT_ERR_NO_CONN)
             return
@@ -213,26 +197,33 @@ class MqttPublisher:
         except ValueError as exc:
             # Config validation refuses wildcard prefixes, but a long enough
             # prefix still makes a topic paho refuses: one over 65,535 bytes.
-            log_event(
-                "mqtt.publish_failed",
-                level=logging.WARNING,
-                topic=topic,
-                error=str(exc),
-            )
+            self._log_publish_failed(topic, exc)
             return None
         if info.rc != MQTTErrorCode.MQTT_ERR_SUCCESS:
             self._log_publish_failed(topic, info.rc)
             return None
         return info
 
-    def _log_publish_failed(self, topic: str, rc: MQTTErrorCode) -> None:
-        log_event(
-            "mqtt.publish_failed",
-            level=logging.WARNING,
-            topic=topic,
-            rc=int(rc),
-            error=mqtt.error_string(rc),
-        )
+    def _log_publish_failed(
+        self, topic: str, failure: MQTTErrorCode | Exception
+    ) -> None:
+        """Log a dropped message: paho's code and its text, or the exception's text."""
+        fields: dict[str, object] = {"topic": topic}
+        if isinstance(failure, Exception):
+            fields["error"] = str(failure)
+        else:
+            fields["rc"] = int(failure)
+            fields["error"] = mqtt.error_string(failure)
+        log_event("mqtt.publish_failed", level=logging.WARNING, **fields)
+
+    def _log_connect_failed(self, reason_code: ReasonCode | None = None) -> None:
+        """Log a failed connection attempt, with the broker's reason when one came."""
+        mqtt_config = self._config.system.mqtt
+        fields: dict[str, object] = {"host": mqtt_config.host, "port": mqtt_config.port}
+        if reason_code is not None:
+            fields["reason_code"] = reason_code.value
+            fields["reason"] = str(reason_code)
+        log_event("mqtt.connect_failed", level=logging.WARNING, **fields)
 
     def _on_connect(
         self,
@@ -247,14 +238,7 @@ class MqttPublisher:
             # The broker refused, as for bad credentials; paho closes and retries.
             with self._lock:
                 self._connect_refused = True
-            log_event(
-                "mqtt.connect_failed",
-                level=logging.WARNING,
-                host=mqtt_config.host,
-                port=mqtt_config.port,
-                reason_code=reason_code.value,
-                reason=str(reason_code),
-            )
+            self._log_connect_failed(reason_code)
             return
         with self._lock:
             self._connected = True
@@ -269,13 +253,7 @@ class MqttPublisher:
 
     def _on_connect_fail(self, client: mqtt.Client, userdata: object) -> None:
         """Paho could not open a TCP connection; it retries after its delay."""
-        mqtt_config = self._config.system.mqtt
-        log_event(
-            "mqtt.connect_failed",
-            level=logging.WARNING,
-            host=mqtt_config.host,
-            port=mqtt_config.port,
-        )
+        self._log_connect_failed()
 
     def _on_disconnect(
         self,
@@ -303,12 +281,4 @@ class MqttPublisher:
             # CONNACK came within the keepalive. Paho also calls this after a
             # refused connect, which _on_connect already logged, and after our
             # own disconnect, which is no failure.
-            mqtt_config = self._config.system.mqtt
-            log_event(
-                "mqtt.connect_failed",
-                level=logging.WARNING,
-                host=mqtt_config.host,
-                port=mqtt_config.port,
-                reason_code=reason_code.value,
-                reason=str(reason_code),
-            )
+            self._log_connect_failed(reason_code)

@@ -37,7 +37,7 @@ class ServicePublisher(Protocol):
 
     def start(self) -> None: ...
 
-    def wait_for_first_connect(self, timeout: float | None = None) -> bool: ...
+    def has_connected(self) -> bool: ...
 
     def stop(self) -> None: ...
 
@@ -68,6 +68,9 @@ class Application:
         scheduler: SensorScheduler,
         publisher: ServicePublisher,
         model: ModelClient,
+        *,
+        hub_stop_timeout_seconds: float = HUB_STOP_TIMEOUT_SECONDS,
+        drain_timeout_seconds: float = DRAIN_TIMEOUT_SECONDS,
     ) -> None:
         self._config = config
         self._camera_hub = camera_hub
@@ -75,6 +78,8 @@ class Application:
         self._scheduler = scheduler
         self._publisher = publisher
         self._model = model
+        self._hub_stop_timeout_seconds = hub_stop_timeout_seconds
+        self._drain_timeout_seconds = drain_timeout_seconds
         self._cameras = {camera_id: CameraRuntime() for camera_id in config.cameras}
 
     async def run(self, stop_event: threading.Event) -> None:
@@ -84,7 +89,7 @@ class Application:
         thread; the hub also sets it when an app callback raises. The camera
         hub starts once the publisher's first connect has published discovery
         (spec section 27), or never, if stop comes first. Shutdown waits up to
-        HUB_STOP_TIMEOUT_SECONDS for the hub, then up to DRAIN_TIMEOUT_SECONDS
+        `hub_stop_timeout_seconds` for the hub, then up to `drain_timeout_seconds`
         for running evaluations, cancelling the rest, then stops the
         publisher, which marks the sensors and the service offline, and
         closes the model client. If the hub raised, its exception is re-raised
@@ -109,10 +114,7 @@ class Application:
             )
             # A state computed before MQTT connects could only be dropped.
             await _wait_until(
-                lambda: (
-                    stop_event.is_set()
-                    or self._publisher.wait_for_first_connect(timeout=0)
-                )
+                lambda: stop_event.is_set() or self._publisher.has_connected()
             )
             if not stop_event.is_set():
                 hub_thread.start()
@@ -120,7 +122,9 @@ class Application:
         finally:
             stop_event.set()
             if hub_thread.ident is not None:  # the thread was started
-                await asyncio.wait({hub_outcome}, timeout=HUB_STOP_TIMEOUT_SECONDS)
+                await asyncio.wait(
+                    {hub_outcome}, timeout=self._hub_stop_timeout_seconds
+                )
             await self._drain()
             try:
                 await asyncio.to_thread(self._publisher.stop)
@@ -136,9 +140,9 @@ class Application:
         raise hub_failure
 
     async def _drain(self) -> None:
-        """Wait for running evaluations, up to DRAIN_TIMEOUT_SECONDS."""
+        """Wait for running evaluations, up to `drain_timeout_seconds`."""
         try:
-            await asyncio.wait_for(self._scheduler.drain(), DRAIN_TIMEOUT_SECONDS)
+            await asyncio.wait_for(self._scheduler.drain(), self._drain_timeout_seconds)
         except TimeoutError:
             pass  # the timeout cancelled drain, and with it every evaluation left
 

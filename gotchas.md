@@ -39,3 +39,11 @@ Read in paho 2.1.0's `client.py`. After a reconnect, `_handle_connack` calls `on
 ## Mosquitto publishes the Last Will on a client-ID takeover
 
 A second connection with the publisher's client ID made eclipse-mosquitto:2 drop the publisher and publish its Last Will (`offline`) before the publisher reconnected and replayed `online`. Observed once on 2026-09-25 in a debug run of the reconnect test; the man pages do not say, and `tests/integration/test_mqtt_publishing.py` accepts either behavior.
+
+## macOS prints Objective-C duplicate-class notices when PyAV and OpenCV load together
+
+PyAV and opencv-python-headless each bundle FFmpeg's libavdevice, so on macOS any process that imports both (`python -m djev_sensors`, the test suite) prints `objc[<pid>]: Class AVFFrameReceiver is implemented in both ...` and the same for `AVFAudioReceiver` on stderr at import time. Tests that assert on a child process's stderr must drop lines starting with `objc[`, as `tests/integration/test_cli.py` does. The classes belong to libavdevice's AVFoundation capture device, which the service never opens (it opens only RTSP URLs), and the notice comes from Apple's Objective-C runtime, so expect it on macOS only. (Seen 2026-09-25 with av 18.1.0 and opencv-python-headless 5.0.0.93.)
+
+## asyncio.run waits up to 300 s for the default executor at exit
+
+On Python 3.12, `asyncio.run` ends with `loop.shutdown_default_executor(constants.THREAD_JOIN_TIMEOUT)`, and that constant is 300 (read in the installed 3.12.12 `asyncio/runners.py` and `asyncio/constants.py`). Work that can block for long, such as the camera hub's stalled RTSP open, must not go through `asyncio.to_thread` or `run_in_executor(None, ...)`, or a bounded shutdown turns into a five-minute exit. `djev_sensors/app.py` runs the hub on its own daemon thread instead.

@@ -20,9 +20,9 @@ Python reads any comment in a file's first two lines that matches `coding[:=]` a
 
 `str(exc)` and `repr(exc)` of a PyAV error hold the full URL with its password (seen with `av.error.ConnectionRefusedError`, errno 61). Log only `type(exc).__name__` and `exc.errno`. FFmpeg's own log lines quote host and port; PyAV discards them by default, and `djev_sensors/camera.py` pins that with `av.logging.set_level(None)` before each open.
 
-## Docker Desktop port probes in the integration stack
+## Docker port-forward probes in the test stacks
 
-Docker Desktop accepts a TCP connection on a published port before the container listens, then closes it at once, so readiness means "connection held open", not "connect succeeded". After a run's stack is gone, macOS can refuse a plain `bind` on 18554 for a while though nothing listens; check that a port is free with a connect probe. Both live in `tests/local_ports.py`, which the integration and end-to-end stacks share.
+Under Docker Desktop, a published port accepted a TCP connection before the container listened, then closed it at once, so readiness means "connection held open", not "connect succeeded". No one has recorded whether Colima's forwarding does the same. After a run's stack is gone, macOS can refuse a plain `bind` on 18554 for a while though nothing listens; check that a port is free with a connect probe. Both live in `tests/local_ports.py`, which the integration and end-to-end stacks share.
 
 ## MediaMTX ends readers when the publisher leaves
 
@@ -52,13 +52,17 @@ On Python 3.12, `asyncio.run` ends with `loop.shutdown_default_executor(constant
 
 On 2026-09-25 the docker CLI's context was `colima` (Colima 0.10.3: 2 CPUs, 2 GiB, no swap, virtiofs, SSH port forwarding), and Docker Desktop was not running. Colima's own `colima.yaml` documents that it mounts only `$HOME` by default, so pytest's `tmp_path` (under `/private/var/folders`) and `/private/tmp` are not shared with containers. `tests/e2e` writes the service's config under `tests/e2e/.run/`, which git and Docker both ignore, and mounts it from there. The full e2e stack (Home Assistant, MediaMTX, Mosquitto, the service) fit in the VM's 2 GiB, which had about 1.2 GB free before it started.
 
+## Colima let a container user read an owner-only file
+
+On 2026-09-26 a file under the repo written with mode 600 (umask 077) and bind-mounted into a `python:3.12-slim` container showed there as `-rw------- 1 0 0`, yet `cat` as UID 10001 read it. The e2e unprivileged-user test likewise passed under umask 077 before its harness made the service's config 644. So a file-mode bug that would lock UID 10001 out on a Linux Docker host goes unnoticed here; check modes on the host side, as `tests/unit/test_e2e_cleanup.py` does for the e2e config.
+
 ## An RTSP open takes seconds to reach its first frame
 
 In one throwaway check on 2026-09-25, PyAV's `av.open` of a MediaMTX stream (TCP, H.264 with a keyframe every second) decoded its first frame about 6 s after the open began. The service opens cameras the same way, so `camera.connected` comes seconds after each (re)connect starts. Timing-sensitive tests must allow for it: the e2e black-to-white clip turns white 30 s after its publisher starts, and the model test fails with a clear message if the camera connected after the switch.
 
 ## uv run needs a writable cache, even with --no-sync
 
-In the service image, `uv run --no-sync` as a system user without a home directory stopped at once with `failed to create directory /home/djev/.cache/uv: Permission denied (os error 13)` (uv 0.9.25, 2026-09-25), so the service never started. The image now runs the service with the virtualenv's own python (`/app/.venv/bin` leads `PATH`), so uv runs only during the build and the unprivileged user has no home directory. Anything that runs uv in the container as that user needs a writable cache first, such as one named by `UV_CACHE_DIR`. `tests/e2e/test_home_assistant.py` checks the container's UID after the service has published discovery.
+In the service image, `uv run --no-sync` as a system user without a home directory stopped at once with `failed to create directory /home/djev/.cache/uv: Permission denied (os error 13)` (uv 0.9.25, 2026-09-25), so the service never started. The image now runs the service with the virtualenv's own python (`/app/.venv/bin` leads `PATH`), so uv runs only in the Dockerfile's build stage, which the runtime image leaves behind, and the unprivileged user has no home directory. Anything that brings uv back into the runtime image and runs it as that user needs a writable cache first, such as one named by `UV_CACHE_DIR`. `tests/e2e/test_home_assistant.py` checks the container's UID after the service has published discovery.
 
 ## Don't judge the uv cache mount by a --no-cache build
 

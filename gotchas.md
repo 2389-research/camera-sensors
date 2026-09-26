@@ -10,7 +10,7 @@ Do not overwrite sampled frames in a latest-only queue before change detection. 
 
 ## Exposed key in local smoke script
 
-`test.sh` is untracked and contains a literal LunaRoute bearer token. Never stage or copy that token. Replace it with `LUNAROUTE_API_KEY` before tracking the script, and rotate the exposed key before any live test.
+`test.sh` once held a literal LunaRoute bearer token. Commit 61ee4d9 began tracking it only after the token gave way to `LUNAROUTE_API_KEY`, and no other commit touches it, so neither the file nor history holds the token. The key it exposed must still be rotated before any live test. Never stage or copy a key.
 
 ## ABOUTME lines can turn into encoding declarations
 
@@ -22,7 +22,7 @@ Python reads any comment in a file's first two lines that matches `coding[:=]` a
 
 ## Docker Desktop port probes in the integration stack
 
-Docker Desktop accepts a TCP connection on a published port before the container listens, then closes it at once, so readiness means "connection held open", not "connect succeeded". After a run's stack is gone, macOS can refuse a plain `bind` on 18554 for a while though nothing listens; check that a port is free with a connect probe. Both live in `tests/integration/conftest.py`.
+Docker Desktop accepts a TCP connection on a published port before the container listens, then closes it at once, so readiness means "connection held open", not "connect succeeded". After a run's stack is gone, macOS can refuse a plain `bind` on 18554 for a while though nothing listens; check that a port is free with a connect probe. Both live in `tests/local_ports.py`, which the integration and end-to-end stacks share.
 
 ## MediaMTX ends readers when the publisher leaves
 
@@ -47,3 +47,11 @@ PyAV and opencv-python-headless each bundle FFmpeg's libavdevice, so on macOS an
 ## asyncio.run waits up to 300 s for the default executor at exit
 
 On Python 3.12, `asyncio.run` ends with `loop.shutdown_default_executor(constants.THREAD_JOIN_TIMEOUT)`, and that constant is 300 (read in the installed 3.12.12 `asyncio/runners.py` and `asyncio/constants.py`). Work that can block for long, such as the camera hub's stalled RTSP open, must not go through `asyncio.to_thread` or `run_in_executor(None, ...)`, or a bounded shutdown turns into a five-minute exit. `djev_sensors/app.py` runs the hub on its own daemon thread instead.
+
+## The Docker engine here is Colima, which shares only $HOME with containers
+
+On 2026-09-25 the docker CLI's context was `colima` (Colima 0.10.3: 2 CPUs, 2 GiB, no swap, virtiofs, SSH port forwarding), and Docker Desktop was not running. Colima's own `colima.yaml` documents that it mounts only `$HOME` by default, so pytest's `tmp_path` (under `/private/var/folders`) and `/private/tmp` are not shared with containers. `tests/e2e` writes the service's config under `tests/e2e/.run/`, which git and Docker both ignore, and mounts it from there. The full e2e stack (Home Assistant, MediaMTX, Mosquitto, the service) fit in the VM's 2 GiB, which had about 1.2 GB free before it started.
+
+## An RTSP open takes seconds to reach its first frame
+
+In one throwaway check on 2026-09-25, PyAV's `av.open` of a MediaMTX stream (TCP, H.264 with a keyframe every second) decoded its first frame about 6 s after the open began. The service opens cameras the same way, so `camera.connected` comes seconds after each (re)connect starts. Timing-sensitive tests must allow for it: the e2e black-to-white clip turns white 30 s after its publisher starts, and the model test fails with a clear message if the camera connected after the switch.

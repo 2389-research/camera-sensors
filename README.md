@@ -13,14 +13,18 @@ YAML.
 2. It scores each sample against the one before it: the percent of pixels
    that changed in a small grayscale copy.
 3. A sensor triggers when that score reaches its `change_threshold_pct`, its
-   cooldown has passed, and it has no request in flight.
+   cooldown has passed, and it has no request in flight. After that movement
+   it rechecks the newest frame a few more times, slowly, so a scene that
+   settles still gets judged.
 4. The service sends the full-resolution frame and the sensor's question to
    Djev through LunaRoute and gets back the probability that the answer is yes.
 5. A high probability publishes `ON`, a low one `OFF`, and one in between
    keeps the current state.
 
 A camera that never changes sends nothing to the model, and the service makes
-no request at startup.
+no request at startup. Each burst of movement costs at most one request plus
+`recheck_count` rechecks per sensor, spaced by the cooldown or the recheck
+interval, whichever is longer.
 
 ## Run it with Docker Compose
 
@@ -216,6 +220,8 @@ the sensor ID `service` is reserved for the service's own availability topic.
 | `true_threshold` | `0.80` | Probability for `ON`; `1 - true_threshold` or less means `OFF`. Above 0.5, at most 1. |
 | `change_threshold_pct` | `2.5` | Percent of compared pixels that must change before the sensor asks Djev. Above 0, at most 100. |
 | `cooldown_seconds` | `10` | Least time between the starts of two requests for this sensor. |
+| `recheck_count` | `3` | Looks at the newest frame after each movement-triggered look, so a scene that settles still gets judged. New movement restores the count; `0` turns rechecks off. |
+| `recheck_interval_seconds` | `10` | Time from the start of one request to the next recheck, never shorter than the cooldown. Above 0. |
 
 ### Secrets and camera URLs
 
@@ -289,13 +295,14 @@ After each judgment the service publishes:
 |---|---|
 | `true_probability` | Djev's probability that the answer is yes. |
 | `true_threshold` | The sensor's threshold. |
-| `change_pct` | The change score that triggered the request. |
+| `change_pct` | The judged frame's change score; small for a recheck. |
 | `camera` | The camera ID. |
 | `model` | `djev`. |
 | `evaluated_at` | UTC time of the judgment. |
 | `latency_ms` | The request's round trip. |
 | `sent_width`, `sent_height` | Size of the image Djev received. |
 | `parse_error` | `true` after a malformed answer, which carries no probability, latency, or size. |
+| `trigger` | `change` for a look triggered by movement, `recheck` for a follow-up look at the newest frame. |
 
 ## Images sent to Djev
 
@@ -336,6 +343,7 @@ only the exception class and errno.
 | `frame.change` | `camera`, `change_pct` | A score reached the lowest threshold among the camera's sensors. |
 | `sensor.triggered` | `sensor`, `camera`, `change_pct` | An evaluation starts. |
 | `sensor.cooldown_skipped` | `sensor`, `camera`, `change_pct`, `reason` | A change arrived during cooldown or while a request was in flight. |
+| `sensor.rechecking` | `sensor`, `camera`, `change_pct`, `remaining` | A follow-up look at the newest frame starts, with `remaining` rechecks still owed. |
 | `inference.started` | `sensor`, `camera` | A model request goes out. |
 | `inference.completed` | `sensor`, `camera`, `true_probability`, `change_pct`, `latency_ms` | Djev answered. |
 | `inference.failed` | `sensor`, `camera`, `error`, and `message` for gateway errors | The request failed. |

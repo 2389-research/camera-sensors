@@ -48,7 +48,8 @@ class SensorScheduler:
     Lives on one asyncio event loop: the app calls `on_change` and
     `camera_status` on that loop, and each evaluation runs as its own task.
     A semaphore caps model requests across all sensors, each sensor has at
-    most one evaluation pending, and no frame is ever queued for later.
+    most one evaluation pending, and no frame is ever queued for later. After
+    movement, a sensor takes a slow trickle of rechecks from later samples.
     """
 
     def __init__(

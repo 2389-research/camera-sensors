@@ -401,7 +401,7 @@ There is no inference at application startup.
 
 The first sampled frame establishes the comparison baseline.
 
-Only a subsequent visual change can cause inference.
+Only a subsequent visual change can cause inference, directly or through the rechecks that follow it (section 11).
 
 ---
 
@@ -424,6 +424,21 @@ Default:
 ```text
 10 seconds
 ```
+
+## Rechecks after movement
+
+A change-triggered look sees the frame at the moment of movement, which often catches the scene mid-motion. Once the scene settles, no further change arrives, so without more looks a sensor could keep a wrong answer.
+
+After each change that meets a sensor's threshold, the sensor therefore owes `recheck_count` more looks at the newest sampled frame. Each recheck starts once `recheck_interval_seconds` have passed since the sensor's last request began, and never before its cooldown expires. A new qualifying change restores the full count, whether or not it earned a look of its own. A camera going offline cancels the owed rechecks.
+
+Defaults:
+
+```yaml
+recheck_count: 3
+recheck_interval_seconds: 10
+```
+
+`recheck_count: 0` turns rechecks off.
 
 ---
 
@@ -819,9 +834,12 @@ After every completed inference, publish:
   "evaluated_at": "2026-09-25T19:32:17Z",
   "latency_ms": 241,
   "sent_width": 768,
-  "sent_height": 432
+  "sent_height": 432,
+  "trigger": "change"
 }
 ```
+
+`trigger` is `change` for a look triggered by movement and `recheck` for a follow-up look at the newest frame (section 11).
 
 Optional diagnostic fields:
 
@@ -884,6 +902,7 @@ class SensorRuntime:
 
     inference_in_flight: bool
     pending_frame: Frame | None
+    rechecks_remaining: int
 ```
 
 ---
@@ -1046,6 +1065,8 @@ Sensor defaults:
 true_threshold: 0.80
 change_threshold_pct: 2.5
 cooldown_seconds: 10
+recheck_count: 3
+recheck_interval_seconds: 10
 ```
 
 Camera default:
@@ -1073,6 +1094,7 @@ frame.change
 
 sensor.triggered
 sensor.cooldown_skipped
+sensor.rechecking
 
 inference.started
 inference.completed
@@ -1296,6 +1318,10 @@ No repeated confirmation is required.
 ### Cooldown
 
 A sensor receiving repeated changes cannot invoke inference more frequently than its configured cooldown.
+
+### Rechecks
+
+After a change-triggered evaluation, a sensor rechecks the newest frame `recheck_count` times, each at least `recheck_interval_seconds` and its cooldown after the previous request began. New movement restores the count.
 
 ### Bad response
 

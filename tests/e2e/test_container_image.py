@@ -18,7 +18,9 @@ BUILD_CONTEXT = (
 BUILD_TIMEOUT = 900.0  # the private modes defeat the layer cache, so uv sync reruns
 RUN_TIMEOUT = 120.0
 # Imports the whole service as the image's own user, and fails if that is root.
-IMPORT_AS_SERVICE_USER = "import os, djev_sensors.app; assert os.getuid() != 0"
+# The command line's module imports every other module, and importing it runs
+# nothing.
+IMPORT_AS_SERVICE_USER = "import os, djev_sensors.__main__; assert os.getuid() != 0"
 
 
 def _copy_with_private_modes(destination: Path) -> None:

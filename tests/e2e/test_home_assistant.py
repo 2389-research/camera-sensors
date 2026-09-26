@@ -304,7 +304,11 @@ class Service:
 
     def start(self, config: Mapping[str, Any], api_key: str) -> None:
         """Mount `config` read-only and start the container with `api_key` set."""
-        (RUN_DIR / "config.yaml").write_text(yaml.safe_dump(dict(config)))
+        config_path = RUN_DIR / "config.yaml"
+        config_path.write_text(yaml.safe_dump(dict(config)))
+        # The container's user, UID 10001, must read the file, and a strict umask
+        # would leave it private to its owner. It holds no secret.
+        config_path.chmod(0o644)
         compose(
             "up", "--detach", "--no-build", SERVICE, env={"LUNAROUTE_API_KEY": api_key}
         )

@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: fixing the 14 still-valid roborev findings (all Minor) on `wip/roborev-fixes`, then closing all 30 open roborev reviews with their dispositions; production runs on docker-host
-- Next: one `scripts/check --live` run, close the roborev reviews, re-enqueue the four roborev jobs that failed without a review, then the finishing options
+- Step: roborev findings fixed on `wip/roborev-fixes` (14 valid items, `scripts/check --live` green); all 30 open roborev reviews commented and closed; four failed reviews re-queued (jobs 251-254)
+- Next: Doctor Biz picks a finishing option for `wip/roborev-fixes`; redeploying docker-host rebuilds the two-stage image there
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19)
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally

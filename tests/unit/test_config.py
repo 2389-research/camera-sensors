@@ -685,7 +685,8 @@ def test_a_rejected_literal_password_stays_out_of_the_full_traceback(
     tmp_path: Path,
 ) -> None:
     # Pydantic's own error text echoes the input value; it must not ride along
-    # as the chained cause, where any printed traceback would show it. The
+    # as the chained cause, where any printed traceback would show it, nor as
+    # the context, where any code that walks the chain would find it. The
     # mapping stays short because pydantic truncates long input values, which
     # would hide the leak rather than prevent it.
     config = _config_dict()
@@ -693,16 +694,21 @@ def test_a_rejected_literal_password_stays_out_of_the_full_traceback(
     with pytest.raises(ConfigError) as exc_info:
         load_config(_write_config(tmp_path, config), BASE_ENV)
     assert "hunter2-literal" not in _full_traceback(exc_info.value)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
 
 
 def test_a_yaml_syntax_error_keeps_the_line_out_of_the_full_traceback(
     tmp_path: Path,
 ) -> None:
-    # PyYAML's error quotes the broken line; chaining it would print the key.
+    # PyYAML's error quotes the broken line; chaining it would print the key,
+    # and keeping it as the context would hand the key to any code that looks.
     path = _write(tmp_path, 'system:\n  model: {api_key: "lr_live_7f3a9c0d\n')
     with pytest.raises(ConfigError) as exc_info:
         load_config(path, BASE_ENV)
     assert "lr_live_7f3a9c0d" not in _full_traceback(exc_info.value)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
 
 
 def test_sensors_recheck_three_times_ten_seconds_apart_by_default(

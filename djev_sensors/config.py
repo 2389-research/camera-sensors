@@ -36,9 +36,9 @@ _SINGLE_TOKEN_PATTERN = re.compile(rf"^{_ENV_TOKEN_PATTERN.pattern}$")
 class ConfigError(Exception):
     """Raised for every configuration load or validation failure.
 
-    The message never contains a secret value or an RTSP URL, and parse and
-    validation failures carry no chained cause, since the library errors behind
-    them quote their input.
+    The message never contains a secret value or an RTSP URL. Parse and
+    validation failures keep the library error behind them as neither their
+    cause nor their context, since its text quotes the input.
     """
 
 
@@ -329,14 +329,18 @@ def load_config(path: Path, env: Mapping[str, str]) -> AppConfig:
     except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(f"could not read config file {path}: {exc}") from exc
 
+    # Each library error below quotes the rejected input, which may hold a
+    # secret. Its handler keeps only a sanitized message, and ConfigError is
+    # raised after the handler has finished, so Python attaches the library
+    # error as neither the cause nor the context.
+    yaml_problem: str | None = None
     try:
         raw = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        # PyYAML's own text quotes the broken line, which may hold a secret, so
-        # it must not travel along as the chained cause.
-        raise ConfigError(
-            f"invalid YAML in {path}: {_describe_yaml_error(exc)}"
-        ) from None
+        # PyYAML's own text quotes the broken line.
+        yaml_problem = _describe_yaml_error(exc)
+    if yaml_problem is not None:
+        raise ConfigError(f"invalid YAML in {path}: {yaml_problem}")
 
     if not isinstance(raw, dict):
         raise ConfigError(f"config file {path} must contain a mapping at the top level")
@@ -344,6 +348,6 @@ def load_config(path: Path, env: Mapping[str, str]) -> AppConfig:
     try:
         return AppConfig.model_validate(raw, context={"env": env})
     except ValidationError as exc:
-        # Pydantic's own text echoes input values, rejected secrets included, so
-        # only the sanitized message survives.
-        raise ConfigError(_format_validation_error(exc)) from None
+        # Pydantic's own text echoes input values, rejected secrets included.
+        message = _format_validation_error(exc)
+    raise ConfigError(message)

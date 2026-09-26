@@ -31,6 +31,8 @@ from djev_sensors.mqtt.discovery import (
     service_availability_topic,
     state_topic,
 )
+from tests.local_ports import closed_port, wait_until
+from tests.log_events import event_names, events, logged
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT = 15.0  # seconds to wait for any one expected message or log event
@@ -270,40 +272,6 @@ def take_over_client_id(address: tuple[str, int], client_id: str) -> None:
             pytest.fail(f"the takeover connection got no CONNACK in {TIMEOUT:.0f} s")
         intruder.loop(timeout=0.1)
     intruder.disconnect()
-
-
-def logged(caplog: pytest.LogCaptureFixture) -> list[tuple[int, dict[str, Any]]]:
-    """Each event logged on the djev_sensors logger as (level, fields), in order."""
-    return [
-        (record.levelno, json.loads(record.getMessage()))
-        for record in caplog.records
-        if record.name == "djev_sensors"
-    ]
-
-
-def events(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
-    return [fields for _, fields in logged(caplog)]
-
-
-def event_names(caplog: pytest.LogCaptureFixture) -> list[str]:
-    return [fields["event"] for fields in events(caplog)]
-
-
-def wait_until(condition: Callable[[], bool], what: str) -> None:
-    """Poll `condition`, which checks something paho's thread does, until it holds."""
-    deadline = time.monotonic() + TIMEOUT
-    while not condition():
-        if time.monotonic() > deadline:
-            pytest.fail(f"timed out after {TIMEOUT:.0f} s waiting for {what}")
-        time.sleep(0.05)
-
-
-def closed_port() -> int:
-    """A local TCP port with nothing listening on it."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-        return port
 
 
 def test_a_connect_announces_retained_config_and_availability_but_state_is_not_retained(
@@ -581,7 +549,7 @@ def test_the_first_connect_signal_waits_until_discovery_is_published(
     assert not publisher.has_connected()
     publisher.start()
     try:
-        wait_until(publisher.has_connected, "the first connect")
+        wait_until(publisher.has_connected, "the first connect", TIMEOUT)
         logged_by_then = event_names(caplog)
     finally:
         publisher.stop()
@@ -603,6 +571,7 @@ def test_publishing_while_disconnected_logs_and_drops_state_and_attributes(
         wait_until(
             lambda: "mqtt.connect_failed" in event_names(caplog),
             "a failed connection attempt",
+            TIMEOUT,
         )
         assert not publisher.has_connected()
         publisher.publish_state("gate_open", True)
@@ -656,6 +625,7 @@ def test_a_refused_connection_is_logged_and_never_counts_as_connected(
                 wait_until(
                     lambda: "mqtt.connect_failed" in event_names(caplog),
                     "the refusal to be logged",
+                    TIMEOUT,
                 )
             assert not publisher.has_connected()
             publisher.publish_state("gate_open", True)
@@ -703,6 +673,7 @@ def test_a_connection_closed_before_connack_is_logged_as_a_failed_connect(
             wait_until(
                 lambda: "mqtt.connect_failed" in event_names(caplog),
                 "the failed connect to be logged",
+                TIMEOUT,
             )
             assert not publisher.has_connected()
         finally:

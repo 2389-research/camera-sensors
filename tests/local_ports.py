@@ -1,11 +1,31 @@
-# ABOUTME: Local TCP port checks for the Docker Compose test stacks: a port must be free
-# ABOUTME: before a stack starts, and it serves only once it holds a connection open.
+# ABOUTME: Local TCP port helpers for tests: a port nothing listens on, a polling wait,
+# ABOUTME: and the Compose stacks' checks that a port is free and that it serves.
 from __future__ import annotations
 
 import socket
 import time
+from collections.abc import Callable
 
 import pytest
+
+
+def closed_port() -> int:
+    """A local TCP port with nothing listening on it."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+        return port
+
+
+def wait_until(
+    condition: Callable[[], bool], what: str, timeout: float, *, interval: float = 0.05
+) -> None:
+    """Poll `condition` every `interval` seconds; fail if `timeout` passes first."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        if time.monotonic() > deadline:
+            pytest.fail(f"timed out after {timeout:.0f} s waiting for {what}")
+        time.sleep(interval)
 
 
 def require_free(port: int) -> None:
@@ -42,8 +62,6 @@ def is_serving(port: int) -> bool:
 
 
 def wait_until_serving(port: int, timeout: float = 60.0) -> None:
-    deadline = time.monotonic() + timeout
-    while not is_serving(port):
-        if time.monotonic() > deadline:
-            pytest.fail(f"nothing served 127.0.0.1:{port} within {timeout:.0f} s")
-        time.sleep(0.2)
+    wait_until(
+        lambda: is_serving(port), f"127.0.0.1:{port} to serve", timeout, interval=0.2
+    )

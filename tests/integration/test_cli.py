@@ -5,18 +5,17 @@ from __future__ import annotations
 import json
 import os
 import signal
-import socket
 import subprocess
 import sys
-import time
 import uuid
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+
+from tests.local_ports import closed_port, wait_until
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT = 30.0  # seconds to wait for the service to start or to exit
@@ -62,22 +61,6 @@ def other_stderr(text: str) -> list[str]:
     both ..." on macOS.
     """
     return [line for line in text.splitlines() if not line.startswith("objc[")]
-
-
-def closed_port() -> int:
-    """A local TCP port with nothing listening on it."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-        return port
-
-
-def wait_until(condition: Callable[[], bool], what: str) -> None:
-    deadline = time.monotonic() + TIMEOUT
-    while not condition():
-        if time.monotonic() > deadline:
-            pytest.fail(f"timed out after {TIMEOUT:.0f} s waiting for {what}")
-        time.sleep(0.05)
 
 
 def write_config(tmp_path: Path, mqtt: dict[str, object], rtsp_port: int) -> Path:
@@ -136,6 +119,7 @@ def run_until(
                 service.poll() is not None or f'"{event}"' in stdout_path.read_text()
             ),
             f"{event}, or the service's exit",
+            TIMEOUT,
         )
         assert service.poll() is None, stderr_path.read_text()
         service.send_signal(signum)

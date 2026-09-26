@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import errno
-import json
 import logging
 import shutil
-import socket
 import subprocess
 import threading
 from collections.abc import Callable, Iterator
@@ -17,6 +15,8 @@ import pytest
 
 from djev_sensors.camera import CameraStreamHub, FrameSample
 from djev_sensors.config import CameraConfig
+from tests.local_ports import closed_port
+from tests.log_events import events
 
 CAMERA_IDS = ("front_door", "porch")
 
@@ -207,14 +207,6 @@ def test_hub_samples_a_live_stream_and_recovers_it_on_one_decoder(
     assert observer.image_formats == {((240, 320, 3), "|u1")}
 
 
-def _closed_port() -> int:
-    """A local TCP port with nothing listening on it."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-        return port
-
-
 @pytest.fixture
 def ffmpeg_logs_on_stderr() -> Iterator[None]:
     """Route FFmpeg's own log messages to stderr, then restore PyAV's default."""
@@ -232,7 +224,7 @@ def test_a_refused_connection_leaks_neither_url_nor_password(
 ) -> None:
     caplog.set_level(logging.DEBUG)
     password = "fake-camera-password-5b9e"
-    port = _closed_port()
+    port = closed_port()
     config = CameraConfig.model_validate(
         {"rtsp": f"rtsp://admin:${{CAMERA_PASSWORD}}@127.0.0.1:{port}/stream"},
         context={"env": {"CAMERA_PASSWORD": password}},
@@ -251,11 +243,7 @@ def test_a_refused_connection_leaks_neither_url_nor_password(
 
     captured = capfd.readouterr()
     assert attempts == [1]
-    assert [
-        json.loads(record.getMessage())
-        for record in caplog.records
-        if record.name == "djev_sensors"
-    ] == [
+    assert events(caplog) == [
         {
             "event": "camera.reconnecting",
             "camera": "garage",

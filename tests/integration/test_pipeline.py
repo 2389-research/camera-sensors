@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import threading
 import time
@@ -23,6 +22,7 @@ from djev_sensors.detectors.base import ChangeDetector, ChangeResult
 from djev_sensors.detectors.frame_difference import FrameDifferenceDetector
 from djev_sensors.models.base import BinaryJudgment, ModelError
 from djev_sensors.scheduler import SensorScheduler
+from tests.log_events import events_named, logged
 
 CAR = "Is a car in the driveway?"
 GATE = "Is the gate open?"
@@ -369,19 +369,6 @@ def make_harness(
 def run_app(app: Application, stop: threading.Event) -> None:
     """Run the app on a fresh event loop until it returns; fail instead of hanging."""
     asyncio.run(asyncio.wait_for(app.run(stop), RUN_TIMEOUT))
-
-
-def logged(caplog: pytest.LogCaptureFixture) -> list[tuple[int, dict[str, Any]]]:
-    """Each event logged on the djev_sensors logger as (level, fields), in order."""
-    return [
-        (record.levelno, json.loads(record.getMessage()))
-        for record in caplog.records
-        if record.name == "djev_sensors"
-    ]
-
-
-def events_named(caplog: pytest.LogCaptureFixture, name: str) -> list[dict[str, Any]]:
-    return [fields for _, fields in logged(caplog) if fields["event"] == name]
 
 
 def camera_hub_threads() -> set[threading.Thread]:

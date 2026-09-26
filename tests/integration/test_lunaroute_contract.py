@@ -6,7 +6,6 @@ import asyncio
 import base64
 import json
 import logging
-import socket
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +18,7 @@ from pydantic import SecretStr
 
 from djev_sensors.models.base import BinaryJudgment, InvalidModelResponse, ModelError
 from djev_sensors.models.lunaroute_djev import LunaRouteDjevClient
+from tests.local_ports import closed_port
 
 FAKE_KEY = "lr_" + "a" * 32
 INSTRUCTIONS = "Is the door open?"
@@ -213,13 +213,8 @@ def test_non_2xx_status_raises_model_error(contract_server: _ContractServer) -> 
 
 
 def test_closed_port_raises_model_error() -> None:
-    probe = socket.socket()
-    probe.bind(("127.0.0.1", 0))
-    port = probe.getsockname()[1]
-    probe.close()
-
     with pytest.raises(ModelError):
-        _evaluate(f"http://127.0.0.1:{port}/v1/systemone", INSTRUCTIONS)
+        _evaluate(f"http://127.0.0.1:{closed_port()}/v1/systemone", INSTRUCTIONS)
 
 
 def test_no_fit_frame_raises_model_error_with_no_request_received(

@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 
 from djev_sensors.camera import CameraStreamHub, FrameSample, reconnect_delay
 from djev_sensors.config import CameraConfig
+from tests.log_events import events_named, logged
 
 URL = "rtsp://camera.test/stream"
 OTHER_URL = "rtsp://other-camera.test/stream"
@@ -191,16 +192,6 @@ def run_hub(
         assert not expired.is_set(), "the hub ran until the test watchdog stopped it"
 
 
-def djev_events(
-    caplog: pytest.LogCaptureFixture,
-) -> list[tuple[int, dict[str, object]]]:
-    return [
-        (record.levelno, json.loads(record.getMessage()))
-        for record in caplog.records
-        if record.name == "djev_sensors"
-    ]
-
-
 def test_cameras_sharing_a_url_sample_at_their_own_rates_from_one_decoder() -> None:
     stop = threading.Event()
     two_seconds_at_10_fps = [index / 10 for index in range(20)]
@@ -373,8 +364,7 @@ def test_a_stream_that_ends_counts_as_a_disconnect(
 
     assert recorder.statuses() == [("garage", True), ("garage", False)]
     assert source.opened == [URL, URL]
-    events = [event for _, event in djev_events(caplog)]
-    disconnected = [e for e in events if e["event"] == "camera.disconnected"]
+    disconnected = events_named(caplog, "camera.disconnected")
     assert disconnected == [
         {"event": "camera.disconnected", "camera": "garage", "error": "end_of_stream"}
     ]
@@ -520,7 +510,7 @@ def test_status_changes_are_logged_by_camera_id_without_the_url_or_error_text(
     run_hub(hub, ignore_sample, ignore_status, stop)
 
     failure = {"error": "ConnectionResetError", "errno": errno.ECONNRESET}
-    assert djev_events(caplog) == [
+    assert logged(caplog) == [
         (logging.INFO, {"event": "camera.connected", "camera": "garage"}),
         (
             logging.WARNING,
@@ -581,7 +571,7 @@ def test_a_callback_failure_is_logged_with_its_traceback_before_the_hub_stops(
 
     failures = [
         (level, fields)
-        for level, fields in djev_events(caplog)
+        for level, fields in logged(caplog)
         if fields["event"] == "camera.callback_failed"
     ]
     assert len(failures) == 1
@@ -625,11 +615,7 @@ def test_a_callback_failure_while_going_offline_logs_no_stream_error_text(
     with pytest.raises(RuntimeError, match="publisher bug"):
         run_hub(hub, ignore_sample, on_status, stop)
 
-    [failure] = [
-        fields
-        for _, fields in djev_events(caplog)
-        if fields["event"] == "camera.callback_failed"
-    ]
+    [failure] = events_named(caplog, "camera.callback_failed")
     assert failure["callback"] == "on_status"
     assert "RuntimeError: publisher bug" in failure["traceback"]
     # The stream error is never chained into the callback's traceback.

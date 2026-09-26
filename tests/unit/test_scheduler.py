@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -18,6 +17,7 @@ from numpy.typing import NDArray
 from djev_sensors.config import AppConfig
 from djev_sensors.models.base import BinaryJudgment, InvalidModelResponse, ModelError
 from djev_sensors.scheduler import SensorScheduler
+from tests.log_events import event_names, events_named, logged
 
 GATE = "Is the gate open?"
 CAR = "Is a car in the driveway?"
@@ -195,17 +195,6 @@ async def settle() -> None:
         await asyncio.sleep(0)
 
 
-def logged(caplog: pytest.LogCaptureFixture, event: str) -> list[dict[str, Any]]:
-    """The fields of each `event` logged on the djev_sensors logger, in order."""
-    found = []
-    for record in caplog.records:
-        if record.name == "djev_sensors":
-            fields = json.loads(record.getMessage())
-            if fields["event"] == event:
-                found.append(fields)
-    return found
-
-
 # What each inference outcome publishes
 
 
@@ -352,7 +341,7 @@ def test_malformed_response_publishes_off_even_when_already_off(
         ]
 
     run(scenario())
-    assert logged(caplog, "inference.invalid_response") == [
+    assert events_named(caplog, "inference.invalid_response") == [
         {"event": "inference.invalid_response", "sensor": "gate", "camera": "yard"}
     ]
 
@@ -436,7 +425,7 @@ def test_model_failure_logs_the_error_class_and_message(
         await h.scheduler.drain()
 
     run(scenario())
-    assert logged(caplog, "inference.failed") == [
+    assert events_named(caplog, "inference.failed") == [
         {
             "event": "inference.failed",
             "sensor": "gate",
@@ -474,18 +463,20 @@ def test_unexpected_model_exception_is_a_model_failure_logged_at_error(
         ]
 
     run(scenario())
-    [record] = [
-        record
-        for record in caplog.records
-        if record.name == "djev_sensors" and '"inference.failed"' in record.getMessage()
+    [failure] = [
+        (level, fields)
+        for level, fields in logged(caplog)
+        if fields["event"] == "inference.failed"
     ]
-    assert record.levelno == logging.ERROR
-    assert json.loads(record.getMessage()) == {
-        "event": "inference.failed",
-        "sensor": "gate",
-        "camera": "yard",
-        "error": "RuntimeError",
-    }
+    assert failure == (
+        logging.ERROR,
+        {
+            "event": "inference.failed",
+            "sensor": "gate",
+            "camera": "yard",
+            "error": "RuntimeError",
+        },
+    )
 
 
 # Availability
@@ -629,7 +620,7 @@ def test_a_qualifying_change_during_the_cooldown_is_skipped(
         assert h.model.calls == [GATE, GATE]
 
     run(scenario())
-    skipped = logged(caplog, "sensor.cooldown_skipped")
+    skipped = events_named(caplog, "sensor.cooldown_skipped")
     assert [(event["sensor"], event["reason"]) for event in skipped] == [
         ("gate", "cooldown")
     ]
@@ -664,7 +655,7 @@ def test_qualifying_changes_while_evaluations_are_pending_are_skipped(
         assert h.model.calls == [GATE, CAR]
 
     run(scenario())
-    skipped = logged(caplog, "sensor.cooldown_skipped")
+    skipped = events_named(caplog, "sensor.cooldown_skipped")
     assert [(event["sensor"], event["reason"]) for event in skipped] == [
         ("gate", "in_flight"),
         ("car", "in_flight"),
@@ -778,7 +769,7 @@ def test_outcome_from_before_a_camera_disconnect_is_discarded(
         ]
 
     run(scenario())
-    discarded = logged(caplog, "inference.discarded")
+    discarded = events_named(caplog, "inference.discarded")
     assert [event["sensor"] for event in discarded] == ["gate"]
 
 
@@ -813,7 +804,7 @@ def test_evaluation_waiting_for_a_slot_skips_the_model_after_a_disconnect(
         assert h.model.calls == [PORCH, GATE]
 
     run(scenario())
-    discarded = logged(caplog, "inference.discarded")
+    discarded = events_named(caplog, "inference.discarded")
     assert [event["sensor"] for event in discarded] == ["gate"]
 
 
@@ -901,7 +892,7 @@ def test_an_evaluation_logs_named_events_without_the_prompt(
 
     run(scenario())
     messages = [r.getMessage() for r in caplog.records if r.name == "djev_sensors"]
-    assert [json.loads(message)["event"] for message in messages] == [
+    assert event_names(caplog) == [
         "sensor.availability_changed",
         "frame.change",
         "sensor.triggered",
@@ -909,7 +900,7 @@ def test_an_evaluation_logs_named_events_without_the_prompt(
         "inference.completed",
         "sensor.state_changed",
     ]
-    assert logged(caplog, "inference.completed") == [
+    assert events_named(caplog, "inference.completed") == [
         {
             "event": "inference.completed",
             "sensor": "gate",
@@ -1039,7 +1030,7 @@ def test_each_recheck_is_logged_with_the_rechecks_left(
         {"couch": sensor(PORCH, recheck_count=2)}, {PORCH: [judgment(0.5)] * 3}
     )
     run(samples(h, [(0, 3.0), (10, 0.4), (20, 0.0)]))
-    assert logged(caplog, "sensor.rechecking") == [
+    assert events_named(caplog, "sensor.rechecking") == [
         {
             "event": "sensor.rechecking",
             "sensor": "couch",

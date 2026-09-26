@@ -1,0 +1,5 @@
+# Local override: pass every variable in .env into the container, so adding a
+# camera needs only a new .env line and a config entry.
+services:
+  djev-sensors:
+    env_file: .env

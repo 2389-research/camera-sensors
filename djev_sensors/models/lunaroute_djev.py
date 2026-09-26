@@ -12,10 +12,10 @@ from typing import Final
 import cv2
 import httpx
 import numpy as np
-from cv2.typing import MatLike
 from numpy.typing import NDArray
 from pydantic import SecretStr
 
+from djev_sensors.frames import as_uint8
 from djev_sensors.models.base import BinaryJudgment, InvalidModelResponse, ModelError
 
 GATEWAY_URL: Final = "https://gw.lunaroute.com/v1/systemone"
@@ -202,12 +202,7 @@ def _fit_dimensions(
 
 
 def _resize(image: NDArray[np.uint8], width: int, height: int) -> NDArray[np.uint8]:
-    return _as_uint8(cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA))
-
-
-def _as_uint8(mat: MatLike) -> NDArray[np.uint8]:
-    """Narrow an OpenCV result to the uint8 array type our pipeline guarantees."""
-    return np.asarray(mat, dtype=np.uint8)
+    return as_uint8(cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA))
 
 
 def _build_body(encoded: NDArray[np.uint8], instructions: str, model: str) -> bytes:

@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 
 from djev_sensors.config import CameraConfig
 from djev_sensors.events import log_event
+from djev_sensors.frames import as_uint8
 
 _MAX_RECONNECT_DELAY_SECONDS = 30.0
 
@@ -69,7 +70,7 @@ class _PyAVFrame:
         self._frame = frame
 
     def to_bgr(self) -> NDArray[np.uint8]:
-        return np.asarray(self._frame.to_ndarray(format="bgr24"), dtype=np.uint8)
+        return as_uint8(self._frame.to_ndarray(format="bgr24"))
 
 
 def open_rtsp_frames(url: str) -> Iterator[DecodedFrame]:

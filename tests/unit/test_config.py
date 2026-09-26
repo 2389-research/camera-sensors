@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -673,3 +674,32 @@ def test_a_yaml_syntax_error_gives_its_position_but_never_the_line(
     message = str(exc_info.value)
     assert "lr_live_7f3a9c0d" not in message
     assert "line 2, column 20" in message  # the opening quote
+
+
+def _full_traceback(exc: BaseException) -> str:
+    """Everything Python would print for this exception, chained causes included."""
+    return "".join(traceback.format_exception(exc))
+
+
+def test_a_rejected_literal_password_stays_out_of_the_full_traceback(
+    tmp_path: Path,
+) -> None:
+    # Pydantic's own error text echoes the input value; it must not ride along
+    # as the chained cause, where any printed traceback would show it. The
+    # mapping stays short because pydantic truncates long input values, which
+    # would hide the leak rather than prevent it.
+    config = _config_dict()
+    config["system"]["mqtt"] = {"host": "h", "password": "hunter2-literal"}
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+    assert "hunter2-literal" not in _full_traceback(exc_info.value)
+
+
+def test_a_yaml_syntax_error_keeps_the_line_out_of_the_full_traceback(
+    tmp_path: Path,
+) -> None:
+    # PyYAML's error quotes the broken line; chaining it would print the key.
+    path = _write(tmp_path, 'system:\n  model: {api_key: "lr_live_7f3a9c0d\n')
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(path, BASE_ENV)
+    assert "lr_live_7f3a9c0d" not in _full_traceback(exc_info.value)

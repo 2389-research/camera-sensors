@@ -36,7 +36,9 @@ _SINGLE_TOKEN_PATTERN = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
 class ConfigError(Exception):
     """Raised for every configuration load or validation failure.
 
-    The message never contains a secret value or an RTSP URL.
+    The message never contains a secret value or an RTSP URL, and parse and
+    validation failures carry no chained cause, since the library errors behind
+    them quote their input.
     """
 
 
@@ -322,9 +324,11 @@ def load_config(path: Path, env: Mapping[str, str]) -> AppConfig:
     try:
         raw = yaml.safe_load(text)
     except yaml.YAMLError as exc:
+        # PyYAML's own text quotes the broken line, which may hold a secret, so
+        # it must not travel along as the chained cause.
         raise ConfigError(
             f"invalid YAML in {path}: {_describe_yaml_error(exc)}"
-        ) from exc
+        ) from None
 
     if not isinstance(raw, dict):
         raise ConfigError(f"config file {path} must contain a mapping at the top level")
@@ -332,4 +336,6 @@ def load_config(path: Path, env: Mapping[str, str]) -> AppConfig:
     try:
         return AppConfig.model_validate(raw, context={"env": env})
     except ValidationError as exc:
-        raise ConfigError(_format_validation_error(exc)) from exc
+        # Pydantic's own text echoes input values, rejected secrets included, so
+        # only the sanitized message survives.
+        raise ConfigError(_format_validation_error(exc)) from None

@@ -538,6 +538,24 @@ def test_stop_leaves_the_service_offline_and_never_logs_the_password(
     assert password not in caplog.text
 
 
+def test_the_first_connect_signal_waits_until_discovery_is_published(
+    mqtt_address: tuple[str, int], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="djev_sensors")
+    publisher = MqttPublisher(validate(raw_config(mqtt_address)))
+    assert not publisher.wait_for_first_connect(0)
+    publisher.start()
+    try:
+        assert publisher.wait_for_first_connect(TIMEOUT)
+        logged_by_then = event_names(caplog)
+    finally:
+        publisher.stop()
+
+    assert logged_by_then == ["mqtt.connected", "mqtt.discovery_published"]
+    # It records the first connect, so it stays set after the disconnect.
+    assert publisher.wait_for_first_connect(0)
+
+
 def test_publishing_while_disconnected_logs_and_drops_state_and_attributes(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -551,6 +569,7 @@ def test_publishing_while_disconnected_logs_and_drops_state_and_attributes(
             lambda: "mqtt.connect_failed" in event_names(caplog),
             "a failed connection attempt",
         )
+        assert not publisher.wait_for_first_connect(0)
         publisher.publish_state("gate_open", True)
         publisher.publish_attributes("gate_open", ATTRIBUTES)
         publisher.publish_attributes("gate_open", {"frame": b"\xff\xd8"})
@@ -604,6 +623,7 @@ def test_a_refused_connection_is_logged_and_never_counts_as_connected(
                     lambda: "mqtt.connect_failed" in event_names(caplog),
                     "the refusal to be logged",
                 )
+            assert not publisher.wait_for_first_connect(0)
             publisher.publish_state("gate_open", True)
         finally:
             publisher.stop()

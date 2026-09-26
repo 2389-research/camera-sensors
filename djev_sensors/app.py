@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -25,14 +26,16 @@ DRAIN_TIMEOUT_SECONDS = 3.0
 
 HUB_THREAD_NAME = "camera-hub"
 
-# How often the event loop checks whether stop has been requested.
-_STOP_POLL_SECONDS = 0.1
+# How often the event loop checks for the first MQTT connect and for stop.
+_POLL_SECONDS = 0.1
 
 
 class ServicePublisher(Protocol):
     """The publisher as the app drives it; MqttPublisher implements it."""
 
     def start(self) -> None: ...
+
+    def wait_for_first_connect(self, timeout: float | None = None) -> bool: ...
 
     def stop(self) -> None: ...
 
@@ -91,12 +94,14 @@ class Application:
         """Run until `stop_event` is set, then shut down in bounded time.
 
         Call on the scheduler's event loop. `stop_event` may be set from any
-        thread; the hub also sets it when an app callback raises. Shutdown
-        waits up to HUB_STOP_TIMEOUT_SECONDS for the hub, then up to
-        DRAIN_TIMEOUT_SECONDS for running evaluations, cancelling the rest,
-        then stops the publisher, which marks the service offline, and closes
-        the model client. If the hub raised, its exception is re-raised after
-        that cleanup.
+        thread; the hub also sets it when an app callback raises. The camera
+        hub starts once the publisher's first connect has published discovery
+        (spec section 27), or never, if stop comes first. Shutdown waits up to
+        HUB_STOP_TIMEOUT_SECONDS for the hub, then up to DRAIN_TIMEOUT_SECONDS
+        for running evaluations, cancelling the rest, then stops the
+        publisher, which marks the service offline, and closes the model
+        client. If the hub raised, its exception is re-raised after that
+        cleanup.
         """
         loop = asyncio.get_running_loop()
         hub_outcome: asyncio.Future[None] = loop.create_future()
@@ -115,8 +120,16 @@ class Application:
                 cameras=list(self._config.cameras),
                 sensors=list(self._config.sensors),
             )
-            hub_thread.start()
-            await _wait_until_set(stop_event)
+            # A state computed before MQTT connects could only be dropped.
+            await _wait_until(
+                lambda: (
+                    stop_event.is_set()
+                    or self._publisher.wait_for_first_connect(timeout=0)
+                )
+            )
+            if not stop_event.is_set():
+                hub_thread.start()
+                await _wait_until(stop_event.is_set)
         finally:
             stop_event.set()
             if hub_thread.ident is not None:  # the thread was started
@@ -210,7 +223,7 @@ def _settle(outcome: asyncio.Future[None], failure: BaseException | None) -> Non
         outcome.set_exception(failure)
 
 
-async def _wait_until_set(event: threading.Event) -> None:
-    """Return once `event` is set, which may happen on any thread."""
-    while not event.is_set():
-        await asyncio.sleep(_STOP_POLL_SECONDS)
+async def _wait_until(condition: Callable[[], bool]) -> None:
+    """Return once `condition()` holds; it reads state other threads change."""
+    while not condition():
+        await asyncio.sleep(_POLL_SECONDS)

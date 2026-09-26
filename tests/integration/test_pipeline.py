@@ -176,11 +176,13 @@ class ScriptedCamera:
         self._connections = iter(connections)
         self._stop = stop
         self._now = 0.0
+        self.opens = 0
 
     def clock(self) -> float:
         return self._now
 
     def __call__(self, url: str) -> Iterator[Frame]:
+        self.opens += 1
         steps = next(self._connections, None)
         if steps is None:
             raise ScriptExhausted(url)
@@ -269,15 +271,30 @@ class ScriptedModel:
 
 class RecordingPublisher:
     """Publisher fake: records each publication as (kind, sensor, value) in order,
-    and start and stop in `lifecycle`."""
+    and start and stop in `lifecycle`.
 
-    def __init__(self, lifecycle: list[str]) -> None:
+    Its first connect completes during start(), or, with `connects_on_start`
+    false, only when connect() is called.
+    """
+
+    def __init__(self, lifecycle: list[str], *, connects_on_start: bool) -> None:
         self._lifecycle = lifecycle
+        self._connects_on_start = connects_on_start
+        self._first_connect = threading.Event()
         self.calls: list[tuple[str, str, Any]] = []
         self.calls_at_stop: int | None = None  # how many had been published
 
     def start(self) -> None:
         self._lifecycle.append("publisher.start")
+        if self._connects_on_start:
+            self.connect()
+
+    def connect(self) -> None:
+        """Complete the first connect, as MqttPublisher does once discovery is out."""
+        self._first_connect.set()
+
+    def wait_for_first_connect(self, timeout: float | None = None) -> bool:
+        return self._first_connect.wait(timeout)
 
     def stop(self) -> None:
         self._lifecycle.append("publisher.stop")
@@ -320,12 +337,14 @@ def make_harness(
     source: ScriptedCamera,
     scripts: Mapping[str, Sequence[ModelStep]],
     detector: ChangeDetector | None = None,
+    *,
+    publisher_connects: bool = True,
 ) -> Harness:
     """The app wired to the real hub, scheduler, and (by default) detector."""
     config = make_config()
     lifecycle: list[str] = []
     model = ScriptedModel(scripts, lifecycle)
-    publisher = RecordingPublisher(lifecycle)
+    publisher = RecordingPublisher(lifecycle, connects_on_start=publisher_connects)
     hub = CameraStreamHub(
         config.cameras,
         frame_source=source,
@@ -466,6 +485,56 @@ def test_a_camera_recovery_leaves_a_sensor_offline_while_its_model_is_failing() 
     assert h.lifecycle == LIFECYCLE
 
 
+def test_the_camera_hub_starts_only_after_the_first_mqtt_connect() -> None:
+    before = solid(60)
+    stop = threading.Event()
+    source = ScriptedCamera([[before, small_change(before), Stop()]], stop)
+    h = make_harness(source, {CAR: [judgment(0.9)]}, publisher_connects=False)
+    before_connect: list[tuple[int, int]] = []
+
+    def connect() -> None:
+        # What the hub had done by then: no stream opened, no status handled.
+        before_connect.append((source.opens, len(h.publisher.calls)))
+        h.publisher.connect()
+
+    connector = threading.Timer(0.3, connect)  # several of the app's polls
+    connector.start()
+    try:
+        run_app(h.app, stop)
+    finally:
+        connector.cancel()
+        connector.join()
+
+    assert before_connect == [(0, 0)]
+    # Once MQTT connected, the camera ran through the pipeline.
+    assert source.opens == 1
+    assert h.publisher.values("availability", "car_present") == [True]
+    assert [prompt for prompt, _ in h.model.calls] == [CAR]
+    assert h.lifecycle == LIFECYCLE
+
+
+def test_a_stop_while_waiting_for_mqtt_never_starts_the_camera_hub(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="djev_sensors")
+    stop = threading.Event()
+    source = ScriptedCamera([], stop)  # opening it would fail the run
+    h = make_harness(source, {}, publisher_connects=False)
+
+    stopper = threading.Timer(0.3, stop.set)
+    stopper.start()
+    try:
+        run_app(h.app, stop)
+    finally:
+        stopper.cancel()
+        stopper.join()
+
+    assert source.opens == 0
+    assert h.publisher.calls == []
+    assert h.lifecycle == LIFECYCLE
+    assert logged(caplog)[-1] == (logging.INFO, {"event": "service.stopped"})
+
+
 def test_a_resolution_change_starts_a_new_baseline_instead_of_failing() -> None:
     wide = solid(60)
     # A different aspect ratio gives a detection frame of a different shape.
@@ -588,6 +657,10 @@ def test_a_callback_bug_stops_the_service_and_is_reraised_after_cleanup(
         run_app(h.app, stop)
 
     assert h.lifecycle == LIFECYCLE
+    # The hub logged the traceback when the bug happened.
+    [failure] = events_named(caplog, "camera.callback_failed")
+    assert failure["callback"] == "on_sample"
+    assert "RuntimeError: detector bug" in failure["traceback"]
     assert logged(caplog)[-1] == (
         logging.ERROR,
         {"event": "service.stopped", "error": "RuntimeError"},

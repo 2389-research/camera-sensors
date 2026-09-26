@@ -46,6 +46,7 @@ class MqttPublisher:
         self._lock = threading.Lock()
         self._connected = False
         self._availability = dict.fromkeys(config.sensors, False)
+        self._first_connect = threading.Event()
         self._client = mqtt.Client(
             CallbackAPIVersion.VERSION2, client_id=config.system.mqtt.client_id
         )
@@ -99,6 +100,13 @@ class MqttPublisher:
         self._client.on_connect = None
         self._client.on_connect_fail = None
         self._client.on_disconnect = None
+
+    def wait_for_first_connect(self, timeout: float | None = None) -> bool:
+        """Block until a connect has published discovery, or `timeout` seconds pass.
+
+        Returns whether one has. It stays true through later disconnects.
+        """
+        return self._first_connect.wait(timeout)
 
     def publish_discovery(self) -> None:
         """Publish every sensor's retained discovery config, if connected.
@@ -244,6 +252,7 @@ class MqttPublisher:
             self._publish_discovery()
             for sensor_id, online in self._availability.items():
                 self._publish_availability(sensor_id, online)
+        self._first_connect.set()
 
     def _on_connect_fail(self, client: mqtt.Client, userdata: object) -> None:
         """Paho could not open a TCP connection; it retries after its delay."""

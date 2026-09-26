@@ -47,8 +47,7 @@ def test_the_image_runs_from_a_strict_umask_checkout(tmp_path: Path) -> None:
             timeout=BUILD_TIMEOUT,
         )
         result = subprocess.run(
-            ["docker", "run", "--rm", IMAGE, "uv", "run", "--no-sync"]
-            + ["python", "-c", IMPORT_AS_SERVICE_USER],
+            ["docker", "run", "--rm", IMAGE, "python", "-c", IMPORT_AS_SERVICE_USER],
             capture_output=True,
             text=True,
             timeout=RUN_TIMEOUT,

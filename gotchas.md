@@ -58,7 +58,11 @@ In one throwaway check on 2026-09-25, PyAV's `av.open` of a MediaMTX stream (TCP
 
 ## uv run needs a writable cache, even with --no-sync
 
-In the service image, `uv run --no-sync` as a system user without a home directory stopped at once with `failed to create directory /home/djev/.cache/uv: Permission denied (os error 13)` (uv 0.9.25, 2026-09-25), so the service never started. The Dockerfile's `useradd --create-home` gives the unprivileged user a home for that cache. `tests/e2e/test_home_assistant.py` checks the container's UID after the service has published discovery.
+In the service image, `uv run --no-sync` as a system user without a home directory stopped at once with `failed to create directory /home/djev/.cache/uv: Permission denied (os error 13)` (uv 0.9.25, 2026-09-25), so the service never started. The image now runs the service with the virtualenv's own python (`/app/.venv/bin` leads `PATH`), so uv runs only during the build and the unprivileged user has no home directory. Anything that runs uv in the container as that user needs a writable cache first, such as one named by `UV_CACHE_DIR`. `tests/e2e/test_home_assistant.py` checks the container's UID after the service has published discovery.
+
+## Don't judge the uv cache mount by a --no-cache build
+
+On 2026-09-26, `docker compose build --no-cache` downloaded every large wheel again although `docker buildx du` showed the Dockerfile's `/root/.cache/uv` cache mount attached and holding 260 MB from the build before. Right after, a plain `docker build` whose layers through `COPY pyproject.toml uv.lock` came from the cache reran `uv sync`, and it installed all 16 packages from that mount with no download. Observed once each with Colima's BuildKit 0.30.0; the cause is unverified. A `--no-cache` build says nothing about whether the mount works.
 
 ## paho-mqtt 2.1: which callback sees a failed connect
 

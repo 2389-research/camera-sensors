@@ -1,0 +1,20 @@
+# ABOUTME: Runs the service as a single container (spec section 36): the config mounted
+# ABOUTME: read-only; the key, password, and camera URLs come from the environment.
+services:
+  djev-sensors:
+    image: djev-sensors:latest
+    build: .
+
+    restart: unless-stopped
+    # Shutdown waits up to 3 s for the camera hub, 3 s for running evaluations, and
+    # 2 s for the broker to acknowledge "offline"; with cleanup, that can pass 10 s.
+    stop_grace_period: 15s
+
+    environment:
+      LUNAROUTE_API_KEY: ${LUNAROUTE_API_KEY}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      GARAGE_RTSP_URL: ${GARAGE_RTSP_URL}
+      BACKYARD_RTSP_URL: ${BACKYARD_RTSP_URL}
+
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro

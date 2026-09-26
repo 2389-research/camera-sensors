@@ -1,0 +1,22 @@
+# ABOUTME: Keeps the Docker build context to what the image needs: no virtualenv,
+# ABOUTME: git history, private config or keys, notes, caches, or test leftovers.
+.venv
+.git
+
+# Private config and anything that can hold a key
+config.yaml
+.env
+test.sh
+
+# Planning notes and journals
+.superpowers
+.private-journal
+
+# Caches
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# Test artifacts
+tests/e2e/.run

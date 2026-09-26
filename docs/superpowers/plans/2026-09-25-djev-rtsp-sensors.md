@@ -11,9 +11,9 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: v0.1 done and merged; amend spec section 37's restart row to match Home Assistant's behavior, then push `main` to GitHub
-- Next: none
-- Open: none
+- Step: rechecks after movement built on `wip/sensor-rechecks` (not merged); couch trial runs on the Mac; deploying to docker-host is blocked because its VM CPU model lacks SSE3/SSE4/POPCNT, which NumPy and OpenCV wheels need
+- Next: after Doctor Biz switches docker-host's VM CPU type to host and reboots it, stop the Mac copy and run `docker compose up -d` in ~/camera-sensors on docker-host; then decide on merging `wip/sensor-rechecks`
+- Open: docker-host VM CPU type; merge of `wip/sensor-rechecks`; whether one model timeout should mark a sensor unavailable (spec section 19) given LunaRoute's slow spells
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
 - Approved: "the old one isn't exposed. do 2, and 3" (2026-09-25) — run the live gates with the existing LunaRoute key (no rotation); fix the two before-shipping items

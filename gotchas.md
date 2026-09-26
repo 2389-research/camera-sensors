@@ -67,3 +67,11 @@ Read in paho 2.1.0's `client.py`. `on_connect_fail` fires only when `reconnect()
 ## math.isfinite raises OverflowError for a huge int
 
 `math.isfinite(10**400)` raises `OverflowError: int too large to convert to float`, and Python's `json` module turns a 401-digit number into exactly such an int. `_extract_noul` checks finiteness only for floats and lets the `0 <= value <= 1` comparison, which is exact for ints, reject the rest. (Verified 2026-09-25.)
+
+## docker-host's virtual CPU can't run NumPy or OpenCV wheels
+
+docker-host (192.168.200.8, SSH as harper, login shell fish) is a KVM guest with the generic "Common KVM processor" CPU model, which exposes no SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT, or AVX. NumPy 2.5 (built for x86-64-v2) dies at import with "NumPy was built with baseline optimizations: (X86_V2) but your machine doesn't support: (X86_V2)", and older NumPy and OpenCV wheels still need SSE3, so no dependency pin fixes it. The fix is the VM's CPU type (host, or at least an x86-64-v2 model) in the hypervisor. Watchtower there runs with WATCHTOWER_LABEL_ENABLE=true, so it leaves unlabeled local builds such as `camera-sensors:local` alone. Measured 2026-09-25.
+
+## LunaRoute latency can blow past the model timeout
+
+On 2026-09-25 around 04:17-04:21 UTC, LunaRoute answers went from about 0.7 s to 7-14 s, a text-only smoke request took 47 s, and requests at the default 15 s `timeout_seconds` failed with ReadTimeout. Each timeout marks the sensor unavailable until the next successful look (spec section 19), so a slow gateway looks like a flapping sensor in Home Assistant. The couch deployment uses `timeout_seconds: 60`.

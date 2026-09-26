@@ -201,7 +201,8 @@ class MqttPublisher:
         try:
             info = self._client.publish(topic, payload, qos=qos, retain=retain)
         except ValueError as exc:
-            # A configured prefix can make a topic paho refuses, such as a wildcard.
+            # Config validation refuses wildcard prefixes, but a long enough
+            # prefix still makes a topic paho refuses: one over 65,535 bytes.
             log_event(
                 "mqtt.publish_failed",
                 level=logging.WARNING,

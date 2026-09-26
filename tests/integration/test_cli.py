@@ -167,7 +167,8 @@ def test_an_invalid_config_exits_2_with_the_error_on_stderr_and_no_traceback(
     assert result.returncode == 2
     # The message and nothing else: no traceback.
     assert other_stderr(result.stderr) == [
-        "python -m djev_sensors: error: system: Field required"
+        "python -m djev_sensors: error: system: Field required; "
+        "sensors: Value error, at least one sensor is required"
     ]
     assert result.stdout == ""
 

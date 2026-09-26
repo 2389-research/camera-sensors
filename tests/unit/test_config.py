@@ -2,9 +2,12 @@
 # ABOUTME: Exercises cross references, environment expansion, and safe error messages.
 from __future__ import annotations
 
+import math
 from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
 
 from djev_sensors.config import DEFAULT_PROMPT_WRAPPER, ConfigError, load_config
 
@@ -22,13 +25,35 @@ def _write(tmp_path: Path, body: str) -> Path:
     return path
 
 
+def _config_dict() -> dict[str, Any]:
+    """A minimal valid config, as the parsed YAML, for a test to change."""
+    return {
+        "system": {
+            "mqtt": {"host": "localhost"},
+            "model": {
+                "provider": "lunaroute",
+                "model": "djev",
+                "api_key_env": "LUNAROUTE_API_KEY",
+            },
+        },
+        "cameras": {"garage": {"rtsp": "${GARAGE_RTSP_URL}"}},
+        "sensors": {
+            "car": {"name": "Car", "camera": "garage", "prompt": "Is a car visible?"}
+        },
+    }
+
+
+def _write_config(tmp_path: Path, config: dict[str, Any]) -> Path:
+    return _write(tmp_path, yaml.safe_dump(config))
+
+
 def test_sensor_defaults_and_camera_reference(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("""
 system:
-  mqtt: {host: localhost, password_env: MQTT_PASSWORD}
+  mqtt: {host: localhost, username: djev, password_env: MQTT_PASSWORD}
   model: {provider: lunaroute, model: djev, api_key_env: LUNAROUTE_API_KEY}
 cameras:
   garage: {rtsp: "${GARAGE_RTSP_URL}"}
@@ -181,7 +206,7 @@ def test_missing_mqtt_password_env_is_rejected(tmp_path: Path) -> None:
         tmp_path,
         """
 system:
-  mqtt: {host: localhost, password_env: MQTT_PASSWORD}
+  mqtt: {host: localhost, username: djev, password_env: MQTT_PASSWORD}
   model: {provider: lunaroute, model: djev, api_key_env: LUNAROUTE_API_KEY}
 cameras:
   garage: {rtsp: "${GARAGE_RTSP_URL}"}
@@ -322,7 +347,7 @@ def test_secret_values_are_not_exposed_via_repr(tmp_path: Path) -> None:
         tmp_path,
         """
 system:
-  mqtt: {host: localhost, password_env: MQTT_PASSWORD}
+  mqtt: {host: localhost, username: djev, password_env: MQTT_PASSWORD}
   model: {provider: lunaroute, model: djev, api_key_env: LUNAROUTE_API_KEY}
 cameras:
   garage: {rtsp: "${GARAGE_RTSP_URL}"}
@@ -531,3 +556,120 @@ def test_example_config_loads_with_fake_environment_values() -> None:
     config = load_config(path, env)
     assert set(config.cameras) == {"garage", "backyard"}
     assert set(config.sensors) == {"car_in_garage", "gate_open"}
+
+
+def test_a_literal_mqtt_password_is_rejected_and_not_leaked(tmp_path: Path) -> None:
+    config = _config_dict()
+    config["system"]["mqtt"].update(username="djev", password="hunter2-literal")
+    with pytest.raises(ConfigError, match=r"system\.mqtt.*password") as exc_info:
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+    assert "hunter2-literal" not in str(exc_info.value)
+
+
+def test_a_literal_api_key_is_rejected_and_not_leaked(tmp_path: Path) -> None:
+    # api_key_env is set too: a literal key must not be silently replaced.
+    config = _config_dict()
+    config["system"]["model"]["api_key"] = "lr_literal_key_1234"
+    with pytest.raises(ConfigError, match=r"system\.model.*api_key") as exc_info:
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+    assert "lr_literal_key_1234" not in str(exc_info.value)
+
+
+def test_the_password_and_the_api_key_come_from_the_environment(tmp_path: Path) -> None:
+    config = _config_dict()
+    config["system"]["mqtt"].update(username="djev", password_env="MQTT_PASSWORD")
+    loaded = load_config(_write_config(tmp_path, config), BASE_ENV)
+    password = loaded.system.mqtt.password
+    assert password is not None
+    assert password.get_secret_value() == BASE_ENV["MQTT_PASSWORD"]
+    api_key = loaded.system.model.api_key.get_secret_value()
+    assert api_key == BASE_ENV["LUNAROUTE_API_KEY"]
+
+
+def test_password_env_without_username_is_rejected(tmp_path: Path) -> None:
+    # Paho sends a password only with a username, so it would be dropped.
+    config = _config_dict()
+    config["system"]["mqtt"]["password_env"] = "MQTT_PASSWORD"
+    with pytest.raises(ConfigError, match="password_env requires username"):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
+def test_an_empty_password_env_is_rejected(tmp_path: Path) -> None:
+    config = _config_dict()
+    config["system"]["mqtt"].update(username="djev", password_env="")
+    with pytest.raises(
+        ConfigError, match="password_env must name an environment variable"
+    ):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
+def test_an_unknown_change_detector_type_is_rejected(tmp_path: Path) -> None:
+    config = _config_dict()
+    config["system"]["change_detection"] = {"type": "mog2"}
+    with pytest.raises(ConfigError, match=r"system\.change_detection\.type"):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
+@pytest.mark.parametrize("value", ["", "home/+", "home/#", "#"])
+@pytest.mark.parametrize("key", ["discovery_prefix", "topic_prefix"])
+def test_an_empty_or_wildcard_topic_prefix_is_rejected(
+    tmp_path: Path, key: str, value: str
+) -> None:
+    config = _config_dict()
+    config["system"]["mqtt"][key] = value
+    with pytest.raises(ConfigError, match=rf"system\.mqtt\.{key}"):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
+def test_the_sensor_id_service_is_reserved(tmp_path: Path) -> None:
+    # Its availability topic would be the service's own.
+    config = _config_dict()
+    config["sensors"] = {"service": config["sensors"]["car"]}
+    with pytest.raises(ConfigError, match="'service' is reserved"):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
+def test_a_config_without_sensors_is_rejected(tmp_path: Path) -> None:
+    config = _config_dict()
+    config["sensors"] = {}
+    with pytest.raises(ConfigError, match="at least one sensor"):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
+@pytest.mark.parametrize("number", [math.inf, math.nan], ids=["inf", "nan"])
+@pytest.mark.parametrize(
+    "field_path",
+    [
+        ("cameras", "garage", "fps"),
+        ("sensors", "car", "cooldown_seconds"),
+        ("system", "model", "timeout_seconds"),
+    ],
+    ids=lambda field_path: field_path[-1],
+)
+def test_a_non_finite_number_is_rejected(
+    tmp_path: Path, field_path: tuple[str, str, str], number: float
+) -> None:
+    config = _config_dict()
+    first, second, field = field_path
+    config[first][second][field] = number
+    with pytest.raises(ConfigError, match=field):
+        load_config(_write_config(tmp_path, config), BASE_ENV)
+
+
+def test_a_config_file_that_is_not_utf8_raises_config_error(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_bytes(b"system:\n  mqtt: {host: caf\xe9}\n")  # Latin-1, not UTF-8
+    with pytest.raises(ConfigError, match="could not read config file"):
+        load_config(path, BASE_ENV)
+
+
+def test_a_yaml_syntax_error_gives_its_position_but_never_the_line(
+    tmp_path: Path,
+) -> None:
+    # PyYAML's own message quotes the broken line, which here holds a key.
+    path = _write(tmp_path, 'system:\n  model: {api_key: "lr_live_7f3a9c0d\n')
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(path, BASE_ENV)
+    message = str(exc_info.value)
+    assert "lr_live_7f3a9c0d" not in message
+    assert "line 2, column 20" in message  # the opening quote

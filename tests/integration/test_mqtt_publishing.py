@@ -109,8 +109,9 @@ def raw_config(address: tuple[str, int], **mqtt_fields: object) -> dict[str, Any
     }
 
 
-def validate(raw: dict[str, Any]) -> AppConfig:
-    return AppConfig.model_validate(raw, context={"env": MODEL_ENV})
+def validate(raw: dict[str, Any], **env: str) -> AppConfig:
+    """Validate `raw` with MODEL_ENV and `env` as the environment."""
+    return AppConfig.model_validate(raw, context={"env": {**MODEL_ENV, **env}})
 
 
 def topic_filters(config: AppConfig) -> list[str]:
@@ -506,7 +507,10 @@ def test_stop_leaves_the_service_offline_and_never_logs_the_password(
 ) -> None:
     caplog.set_level(logging.DEBUG)
     password = "mqtt-password-7f3a9c"
-    config = validate(raw_config(mqtt_address, username="djev", password=password))
+    config = validate(
+        raw_config(mqtt_address, username="djev", password_env="MQTT_PASSWORD"),
+        MQTT_PASSWORD=password,
+    )
     service = service_availability_topic(config)
     publisher = MqttPublisher(config)
     with Subscriber(mqtt_address, [service]) as watcher:
@@ -654,7 +658,9 @@ def test_a_topic_paho_rejects_is_logged_and_the_rest_still_publishes(
     mqtt_address: tuple[str, int], caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO, logger="djev_sensors")
-    config = validate(raw_config(mqtt_address, discovery_prefix="ha-test/+"))
+    # Validation refuses wildcards but not length, and every discovery topic
+    # under this prefix is over paho's 65,535-byte limit.
+    config = validate(raw_config(mqtt_address, discovery_prefix="h" * 65_536))
     publisher = MqttPublisher(config)
     with Subscriber(mqtt_address, [f"{config.system.mqtt.topic_prefix}/#"]) as live:
         publisher.start()
@@ -673,17 +679,17 @@ def test_a_topic_paho_rejects_is_logged_and_the_rest_still_publishes(
         (availability_topic("car_present", config), "offline"),
         (state_topic("gate_open", config), "ON"),
     ]
-    wildcard = "Publish topic cannot contain wildcards."
+    too_long = "Publish topic is too long."
     assert events(caplog)[1:4] == [
         {
             "event": "mqtt.publish_failed",
             "topic": discovery_topic("gate_open", config),
-            "error": wildcard,
+            "error": too_long,
         },
         {
             "event": "mqtt.publish_failed",
             "topic": discovery_topic("car_present", config),
-            "error": wildcard,
+            "error": too_long,
         },
         {"event": "mqtt.discovery_published", "sensors": 0},
     ]

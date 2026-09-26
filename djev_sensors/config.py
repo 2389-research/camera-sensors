@@ -26,6 +26,8 @@ DEFAULT_PROMPT_WRAPPER = (
 )
 
 _ID_PATTERN = re.compile(r"^[a-z0-9_]+$")
+# <topic_prefix>/service/availability is the whole service's availability topic.
+_RESERVED_SENSOR_ID = "service"
 _ENV_TOKEN_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _CREDENTIAL_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://[^/@]*:([^/@]*)@")
 _SINGLE_TOKEN_PATTERN = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
@@ -82,7 +84,7 @@ class CameraConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rtsp: SecretStr
-    fps: float = Field(default=1, gt=0)
+    fps: float = Field(default=1, gt=0, allow_inf_nan=False)
 
     @field_validator("rtsp", mode="before")
     @classmethod
@@ -102,7 +104,7 @@ class SensorConfig(BaseModel):
     device_class: str | None = None
     true_threshold: float = Field(default=0.80, gt=0.5, le=1)
     change_threshold_pct: float = Field(default=2.5, gt=0, le=100)
-    cooldown_seconds: float = Field(default=10, ge=0)
+    cooldown_seconds: float = Field(default=10, ge=0, allow_inf_nan=False)
 
     @field_validator("prompt")
     @classmethod
@@ -127,14 +129,42 @@ class MqttConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _resolve_password(cls, data: object, info: ValidationInfo) -> object:
+        """Fill `password` from the variable `password_env` names.
+
+        `password` is never read from the file itself.
+        """
         if not isinstance(data, dict):
             return data
+        if "password" in data:
+            raise ValueError(
+                "password must not be set in the config file; set password_env "
+                "to the name of the environment variable that holds it"
+            )
         resolved = dict(data)
         password_env = resolved.pop("password_env", None)
         if password_env is not None:
+            if not password_env:
+                raise ValueError("password_env must name an environment variable")
+            # Paho sends a password only along with a username.
+            if not resolved.get("username"):
+                raise ValueError("password_env requires username")
             env = _env_from_context(info.context)
             resolved["password"] = _lookup_env(password_env, env)
         return resolved
+
+    @field_validator("discovery_prefix", "topic_prefix")
+    @classmethod
+    def _prefix_is_a_topic_level(cls, value: str) -> str:
+        """A prefix starts published topics, so it must be a valid topic name part.
+
+        A wildcard in `topic_prefix` would reach the Last Will topic too, and
+        the broker closes a connection whose CONNECT carries one.
+        """
+        if not value:
+            raise ValueError("must not be empty")
+        if "+" in value or "#" in value:
+            raise ValueError("must not contain the MQTT wildcards + or #")
+        return value
 
 
 class ModelConfig(BaseModel):
@@ -143,14 +173,23 @@ class ModelConfig(BaseModel):
     provider: Literal["lunaroute"]
     model: Literal["djev"]
     api_key: SecretStr
-    timeout_seconds: float = Field(default=15, gt=0)
+    timeout_seconds: float = Field(default=15, gt=0, allow_inf_nan=False)
     prompt_wrapper: str = DEFAULT_PROMPT_WRAPPER
 
     @model_validator(mode="before")
     @classmethod
     def _resolve_api_key(cls, data: object, info: ValidationInfo) -> object:
+        """Fill `api_key` from the variable `api_key_env` names.
+
+        `api_key` is never read from the file itself.
+        """
         if not isinstance(data, dict):
             return data
+        if "api_key" in data:
+            raise ValueError(
+                "api_key must not be set in the config file; set api_key_env "
+                "to the name of the environment variable that holds it"
+            )
         resolved = dict(data)
         api_key_env = resolved.pop("api_key_env", None)
         if not api_key_env:
@@ -173,7 +212,7 @@ class InferenceConfig(BaseModel):
 class ChangeDetectionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: str = "frame_difference"
+    type: Literal["frame_difference"] = "frame_difference"
     width: int = Field(default=320, gt=0)
     pixel_delta_threshold: int = Field(default=20, ge=0, le=255)
     blur: int = Field(default=5, ge=0)
@@ -217,7 +256,14 @@ class AppConfig(BaseModel):
     def _validate_sensor_ids(
         cls, value: dict[str, SensorConfig]
     ) -> dict[str, SensorConfig]:
+        if not value:
+            raise ValueError("at least one sensor is required")
         _validate_ids(value.keys(), "sensor")
+        if _RESERVED_SENSOR_ID in value:
+            raise ValueError(
+                f"sensor id {_RESERVED_SENSOR_ID!r} is reserved for the "
+                "service's own availability topic"
+            )
         return value
 
     @model_validator(mode="after")
@@ -239,22 +285,46 @@ def _format_validation_error(exc: ValidationError) -> str:
     return "; ".join(parts)
 
 
+def _describe_yaml_error(exc: yaml.YAMLError) -> str:
+    """PyYAML's account of a parse failure, without the source it quotes.
+
+    str() of a marked error quotes the lines around each mark, and a broken
+    line can hold a secret, so this keeps only each message with the line and
+    column it points at. PyYAML's other errors quote no source.
+    """
+    if not isinstance(exc, yaml.MarkedYAMLError):
+        return str(exc)
+    parts = []
+    for message, mark in (
+        (exc.context, exc.context_mark),
+        (exc.problem, exc.problem_mark),
+    ):
+        if message is None:
+            continue
+        if mark is not None:
+            message += f" (line {mark.line + 1}, column {mark.column + 1})"
+        parts.append(message)
+    return ": ".join(parts)
+
+
 def load_config(path: Path, env: Mapping[str, str]) -> AppConfig:
     """Load and validate the YAML service configuration.
 
-    Raises ConfigError for every failure: an unreadable file, invalid YAML,
-    a validation error, or a missing/empty environment variable. The error
-    message never contains a secret value or an RTSP URL.
+    Raises ConfigError for every failure: an unreadable or non-UTF-8 file,
+    invalid YAML, a validation error, or a missing/empty environment
+    variable. The error message never contains a secret value or an RTSP URL.
     """
     try:
-        text = path.read_text()
-    except OSError as exc:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(f"could not read config file {path}: {exc}") from exc
 
     try:
         raw = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        raise ConfigError(f"invalid YAML in {path}: {exc}") from exc
+        raise ConfigError(
+            f"invalid YAML in {path}: {_describe_yaml_error(exc)}"
+        ) from exc
 
     if not isinstance(raw, dict):
         raise ConfigError(f"config file {path} must contain a mapping at the top level")

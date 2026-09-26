@@ -59,7 +59,7 @@ The system MUST:
 5. Compute one camera-level change score for each sampled frame.
 6. Allow each semantic sensor to have its own change threshold.
 7. Trigger one independent Djev request per eligible sensor.
-8. Keep the full-resolution camera frame locally and send the largest image that fits LunaRoute's request limit to Djev.
+8. Keep the full-resolution camera frame locally and send Djev the largest image that fits both LunaRoute's request limit and Djev's limit of 2048 pixels per side.
 9. Convert Djev's Noul probability into Home Assistant binary state.
 10. Publish using Home Assistant MQTT Discovery.
 11. Publish useful inference metadata as entity attributes.
@@ -265,7 +265,7 @@ fps: 1
 
 means approximately one frame comparison each second.
 
-The full-resolution decoded frame MUST remain available until inference is dispatched. The transport uses it at full size when the request fits; otherwise it resizes and JPEG-encodes only the transmitted image.
+The full-resolution decoded frame MUST remain available until inference is dispatched. The transport uses it at full size when the request fits LunaRoute's budget and neither side exceeds Djev's limit of 2048 pixels; otherwise it resizes and JPEG-encodes only the transmitted image.
 
 A separate reduced frame is generated for change detection.
 
@@ -512,7 +512,7 @@ Conceptually the request is:
 
 The verified LunaRoute `/v1/systemone` route accepts an image object in the question instructions. It rejects a top-level `images` field. This differs from Djev's direct API, so the wire format belongs only in the LunaRoute adapter.
 
-LunaRoute's measured request limit was about 48 KB on 2026-09-24/25, including base64 image text. The adapter MUST measure the serialized request and fit it under a conservative 45,000-byte budget. It SHOULD keep the source resolution when it fits, then reduce JPEG quality and dimensions until it does. It MUST record the sent width and height. If no usable image fits, it treats the evaluation as a model-path failure with a clear diagnostic. These limits may change and must be checked again during implementation.
+LunaRoute's measured request limit was about 48 KB on 2026-09-24/25, including base64 image text. The adapter MUST measure the serialized request and fit it under a conservative 45,000-byte budget. Djev rejects images over 2048 pixels per side, so the first candidate is the source frame, scaled down when needed to 2048 pixels on its longest side. The adapter SHOULD keep that size when it fits, then reduce JPEG quality and dimensions until it does. It MUST record the sent width and height. If no usable image fits, it treats the evaluation as a model-path failure with a clear diagnostic. These limits may change and must be checked again during implementation.
 
 The application sends **one Djev request per sensor**, even when several sensors trigger from the same frame.
 
@@ -603,6 +603,8 @@ otherwise
     → KEEP PREVIOUS STATE
 ```
 
+A valid `true_threshold` is above 0.5 and at most 1. At 0.5 or below, the ON and OFF ranges would overlap and leave no uncertainty band.
+
 Example:
 
 ```yaml
@@ -612,9 +614,9 @@ true_threshold: 0.80
 produces:
 
 ```text
-0.80 – 1.00    ON
-0.20 – 0.80    unchanged
-0.00 – 0.20    OFF
+0.80 <= p <= 1.00    ON
+0.20 <  p <  0.80    unchanged
+0.00 <= p <= 0.20    OFF
 ```
 
 This preserves the explicit requirement that low-confidence / ambiguous observations must not overwrite an existing state.
@@ -751,7 +753,7 @@ Publish state with:
 retain = false
 ```
 
-This means Home Assistant may show the entity as unknown following a restart until another state message is received; that follows Home Assistant's MQTT binary sensor behavior for non-retained state.
+This means Home Assistant may show the entity as unknown following a Home Assistant restart until another state message is received; that follows Home Assistant's MQTT binary sensor behavior for non-retained state.
 
 MQTT reconnect MUST NOT cause all current states to be republished.
 
@@ -1062,7 +1064,7 @@ change_detection:
 Sensor defaults:
 
 ```yaml
-true_threshold: 0.80
+true_threshold: 0.80  # above 0.5, at most 1
 change_threshold_pct: 2.5
 cooldown_seconds: 10
 recheck_count: 3
@@ -1291,7 +1293,7 @@ are generated.
 
 ### Inference image
 
-Change detection may use the reduced frame. Inference uses the corresponding full-resolution decoded frame as its source. Djev receives it at full size when the request fits LunaRoute's budget; otherwise it receives the largest fitted JPEG. Attributes report the sent dimensions.
+Change detection may use the reduced frame. Inference uses the corresponding full-resolution decoded frame as its source. Djev receives it at full size when it fits both LunaRoute's budget and Djev's limit of 2048 pixels per side; otherwise it receives the largest fitted JPEG within both limits. Attributes report the sent dimensions.
 
 ### Confidence band
 

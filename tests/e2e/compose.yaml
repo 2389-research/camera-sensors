@@ -1,0 +1,36 @@
+# ABOUTME: End-to-end stack for tests/e2e: MediaMTX, Mosquitto, Home Assistant, and the
+# ABOUTME: service built from the repo's Dockerfile. Host ports bind 127.0.0.1 only.
+name: djev-sensors-e2e
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    environment:
+      # Only TCP crosses the port forwarding from the host's FFmpeg publisher.
+      MTX_RTSPTRANSPORTS: tcp
+    ports:
+      - "127.0.0.1:18555:8554"
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes:
+      # Persistence stays off, so every start begins with no retained messages.
+      - ../integration/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "127.0.0.1:18884:1883"
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    ports:
+      - "127.0.0.1:18123:8123"
+
+  # Each test starts and removes this service; the stack fixture names the others.
+  djev-sensors:
+    build: ../..
+    environment:
+      # Passed through from the shell that runs docker compose; unset stays unset.
+      - LUNAROUTE_API_KEY
+    volumes:
+      # test_home_assistant.py writes it before each start.
+      - ./.run/config.yaml:/app/config.yaml:ro
+    stop_grace_period: 15s

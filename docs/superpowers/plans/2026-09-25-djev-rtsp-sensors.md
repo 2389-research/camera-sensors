@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: deployed on docker-host (~/camera-sensors, `djev-sensors:latest` built from main): six sensors on four cameras, all online; the Mac copy is stopped
-- Next: none
+- Step: fixing the 14 still-valid roborev findings (all Minor) on `wip/roborev-fixes`, then closing all 30 open roborev reviews with their dispositions; production runs on docker-host
+- Next: one `scripts/check --live` run, close the roborev reviews, re-enqueue the four roborev jobs that failed without a review, then the finishing options
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19)
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
@@ -20,6 +20,7 @@
 - Approved: "1" (2026-09-25) — finishing option 1 for `wip/live-gates-hardening`, merge back to main locally
 - Approved: "sure. also push" (2026-09-25) — amend spec section 37 so a service restart keeps HA's last state; push `main` to origin
 - Approved: "let's merge the rechecks, and deploy to docker host" (2026-09-26) — merge `wip/sensor-rechecks` into main; deploy to docker-host once its CPU allows
+- Approved: "can you fix all the roborev issues" (2026-09-26) — fix every still-valid roborev finding, including spec wording clarifications V9-V11 that change no behavior
 - Compactions: 0
 
 ## Global Constraints

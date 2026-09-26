@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: live gates with the existing LunaRoute key, then two hardening fixes (image readable from a strict-umask checkout; rejected secrets out of chained config errors), on `wip/live-gates-hardening`
-- Next: one `scripts/check --live` run with `LUNAROUTE_API_KEY` set, then the finishing options
+- Step: v0.1 done. `scripts/check --live` passed with the existing LunaRoute key (195 unit and integration tests, 8 end-to-end tests including the live probe and the model test through real Home Assistant); both hardening fixes landed on `wip/live-gates-hardening`
+- Next: Doctor Biz picks a finishing option for `wip/live-gates-hardening` (merge locally, push and open a PR, or keep)
 - Open: spec section 37 says HA state is "initially unknown" after a service restart, but HA keeps its cached state
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally

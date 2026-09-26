@@ -22,9 +22,10 @@ YAML.
    keeps the current state.
 
 A camera that never changes sends nothing to the model, and the service makes
-no request at startup. Each burst of movement costs at most one request plus
-`recheck_count` rechecks per sensor, spaced by the cooldown or the recheck
-interval, whichever is longer.
+no request at startup. Movement that settles within the cooldown costs at most
+one request plus `recheck_count` rechecks per sensor, spaced by the cooldown
+or the recheck interval, whichever is longer. Movement that lasts longer
+starts another request each time the cooldown expires.
 
 ## Run it with Docker Compose
 
@@ -34,10 +35,9 @@ interval, whichever is longer.
    cp config.example.yaml config.yaml
    ```
 
-2. Put the secrets in a `.env` file beside `compose.yaml`. Compose reads it
-   for the variables `compose.yaml` names, and your shell's environment
-   overrides it. Git and Docker both ignore `.env`. The file holds the key,
-   the broker password, and camera passwords, so keep it at mode 600 with
+2. Put the secrets and camera URLs in a `.env` file beside `compose.yaml`.
+   Git and Docker both ignore `.env`. The file holds the key, the broker
+   password, and camera passwords, so keep it at mode 600 with
    `chmod 600 .env`:
 
    ```
@@ -47,10 +47,13 @@ interval, whichever is longer.
    BACKYARD_RTSP_URL=rtsp://viewer:secret@192.0.2.11:554/stream1
    ```
 
-   If your config names other variables, add them under `environment:` in
-   `compose.yaml` as well, or the container never sees them. Compose warns
-   about each of the four that is unset and passes it empty; the service fails
-   only when a variable its config names is empty.
+   Compose reads `compose.override.yaml` along with `compose.yaml`, and the
+   override passes every variable in `.env` into the container, so a new
+   camera needs only a line here and an entry in `config.yaml`. The four
+   variables above also appear under `environment:` in `compose.yaml`; for
+   those four alone, a variable exported in your shell overrides `.env`.
+   Compose warns about each of the four that is unset and passes it empty;
+   the service fails only when a variable its config names is empty.
 
 3. Build and start the container:
 
@@ -144,6 +147,8 @@ sensors:
     true_threshold: 0.80
     change_threshold_pct: 2.5
     cooldown_seconds: 10
+    recheck_count: 3
+    recheck_interval_seconds: 10
 
   gate_open:
     name: Gate Open
@@ -157,6 +162,8 @@ sensors:
     true_threshold: 0.85
     change_threshold_pct: 1.5
     cooldown_seconds: 5
+    recheck_count: 3
+    recheck_interval_seconds: 10
 ```
 
 ### Reference

@@ -53,6 +53,8 @@ sensors:
     true_threshold: 0.80
     change_threshold_pct: 2.5
     cooldown_seconds: 10
+    recheck_count: 3
+    recheck_interval_seconds: 10
 
   gate_open:
     name: Gate Open
@@ -66,3 +68,5 @@ sensors:
     true_threshold: 0.85
     change_threshold_pct: 1.5
     cooldown_seconds: 5
+    recheck_count: 3
+    recheck_interval_seconds: 10

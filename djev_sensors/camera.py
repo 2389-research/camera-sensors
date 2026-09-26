@@ -6,7 +6,9 @@ import logging
 import math
 import threading
 import time
+import traceback
 from collections.abc import Callable, Generator, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import NotRequired, Protocol, TypedDict
 
@@ -139,8 +141,8 @@ class CameraStreamHub:
         different worker threads.
 
         An exception from `on_sample` or `on_status` is a bug, not a stream
-        failure: the hub sets `stop_event`, stops every worker, and re-raises
-        the exception here.
+        failure: the hub logs it with its traceback as `camera.callback_failed`,
+        sets `stop_event`, stops every worker, and re-raises the exception here.
 
         Returns once every decoder is closed and every worker thread has
         exited. Shutdown can wait up to one read timeout for a stalled stream.
@@ -314,7 +316,8 @@ class _StreamWorker:
                 if not self._online:
                     self._mark_online()
                 for camera_id in due:
-                    self._on_sample(FrameSample(camera_id, image, captured_at))
+                    with _logging_failure("on_sample", camera_id):
+                        self._on_sample(FrameSample(camera_id, image, captured_at))
         finally:
             frames.close()
 
@@ -323,20 +326,46 @@ class _StreamWorker:
         self._attempt = 0
         for camera_id in self._sample_clocks:
             log_event("camera.connected", camera=camera_id)
-            self._on_status(camera_id, True)
+            with _logging_failure("on_status", camera_id):
+                self._on_status(camera_id, True)
 
     def _mark_offline(self, failure: _FailureFields) -> None:
         if not self._online:
             return
         self._online = False
         for camera_id in self._sample_clocks:
-            self._on_status(camera_id, False)
+            with _logging_failure("on_status", camera_id):
+                self._on_status(camera_id, False)
             log_event(
                 "camera.disconnected",
                 level=logging.WARNING,
                 camera=camera_id,
                 **failure,
             )
+
+
+@contextmanager
+def _logging_failure(callback: str, camera_id: str) -> Iterator[None]:
+    """Log an exception from a hub callback with its traceback, then let it propagate.
+
+    A callback exception is an app bug that stops the hub. Logged here, as it
+    happens, the traceback survives even when run() cannot re-raise it before
+    a bounded shutdown stops waiting. Callbacks never run while a stream error
+    is being handled, so no PyAV error, whose text can quote the RTSP URL, is
+    ever chained into this traceback.
+    """
+    try:
+        yield
+    except BaseException as exc:
+        log_event(
+            "camera.callback_failed",
+            level=logging.ERROR,
+            camera=camera_id,
+            callback=callback,
+            error=type(exc).__name__,
+            traceback="".join(traceback.format_exception(exc)),
+        )
+        raise
 
 
 class _FailureFields(TypedDict):

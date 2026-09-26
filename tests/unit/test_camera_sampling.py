@@ -539,3 +539,99 @@ def test_status_changes_are_logged_by_camera_id_without_the_url_or_error_text(
     ]
     assert "hunter2" not in caplog.text
     assert "rtsp://" not in caplog.text
+
+
+class StopStateAtFailureLog(logging.Handler):
+    """Records whether `stop` was already set when each callback failure was logged."""
+
+    def __init__(self, stop: threading.Event) -> None:
+        super().__init__()
+        self._stop = stop
+        self.stop_was_set: list[bool] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if json.loads(record.getMessage())["event"] == "camera.callback_failed":
+            self.stop_was_set.append(self._stop.is_set())
+
+
+def test_a_callback_failure_is_logged_with_its_traceback_before_the_hub_stops(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="djev_sensors")
+    stop = threading.Event()
+    source = ScriptedSource({URL: [[0.0, WAIT_FOR_STOP]]}, stop)
+    hub = CameraStreamHub(
+        {"garage": camera()},
+        frame_source=source,
+        clock=source.clock,
+        reconnect_delay=no_delay,
+    )
+
+    def detect_changes(sample: FrameSample) -> None:
+        raise RuntimeError("detector bug")
+
+    at_failure = StopStateAtFailureLog(stop)
+    logger = logging.getLogger("djev_sensors")
+    logger.addHandler(at_failure)
+    try:
+        with pytest.raises(RuntimeError, match="detector bug"):
+            run_hub(hub, detect_changes, ignore_status, stop)
+    finally:
+        logger.removeHandler(at_failure)
+
+    failures = [
+        (level, fields)
+        for level, fields in djev_events(caplog)
+        if fields["event"] == "camera.callback_failed"
+    ]
+    assert len(failures) == 1
+    level, fields = failures[0]
+    traceback_text = fields.pop("traceback")
+    assert (level, fields) == (
+        logging.ERROR,
+        {
+            "event": "camera.callback_failed",
+            "camera": "garage",
+            "callback": "on_sample",
+            "error": "RuntimeError",
+        },
+    )
+    assert traceback_text.startswith("Traceback (most recent call last):")
+    assert "in detect_changes" in traceback_text
+    assert traceback_text.rstrip().endswith("RuntimeError: detector bug")
+    # Logged while the hub was still running, so a bounded shutdown keeps it.
+    assert at_failure.stop_was_set == [False]
+
+
+def test_a_callback_failure_while_going_offline_logs_no_stream_error_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="djev_sensors")
+    stop = threading.Event()
+    # Like a PyAV error, the stream failure quotes the URL and its password.
+    refused = StreamError("refused: rtsp://admin:hunter2@camera.test/stream")
+    source = ScriptedSource({URL: [[0.0, refused]]}, stop)
+    hub = CameraStreamHub(
+        {"garage": camera()},
+        frame_source=source,
+        clock=source.clock,
+        reconnect_delay=no_delay,
+    )
+
+    def on_status(camera_id: str, connected: bool) -> None:
+        if not connected:
+            raise RuntimeError("publisher bug")
+
+    with pytest.raises(RuntimeError, match="publisher bug"):
+        run_hub(hub, ignore_sample, on_status, stop)
+
+    [failure] = [
+        fields
+        for _, fields in djev_events(caplog)
+        if fields["event"] == "camera.callback_failed"
+    ]
+    assert failure["callback"] == "on_status"
+    assert "RuntimeError: publisher bug" in failure["traceback"]
+    # The stream error is never chained into the callback's traceback.
+    assert "StreamError" not in failure["traceback"]
+    assert "hunter2" not in caplog.text

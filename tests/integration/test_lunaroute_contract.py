@@ -97,6 +97,11 @@ def contract_server() -> Iterator[_ContractServer]:
         server.server_close()
 
 
+def _noul_body(value: str) -> bytes:
+    """A response body whose answers.result is a noul answer of `value`, raw JSON."""
+    return b'{"answers": {"result": {"type": "noul", "noul": ' + value.encode() + b"}}}"
+
+
 def _small_frame() -> NDArray[np.uint8]:
     return np.zeros((48, 64, 3), dtype=np.uint8)
 
@@ -148,10 +153,35 @@ def test_valid_noul_response_returns_binary_judgment(
     assert base64.b64decode(image_field[len(prefix) :])[:2] == b"\xff\xd8"
 
 
-def test_malformed_2xx_raises_invalid_model_response(
-    contract_server: _ContractServer,
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(b"<html>Bad gateway</html>", id="not JSON"),
+        pytest.param(b"[0.9]", id="not an object"),
+        pytest.param(b"{}", id="no answers"),
+        pytest.param(b'{"answers": [0.9]}', id="answers not an object"),
+        pytest.param(b'{"answers": {"result": 0.9}}', id="result not an object"),
+        pytest.param(
+            b'{"answers": {"result": {"type": "choice"}}}', id="not a noul answer"
+        ),
+        pytest.param(b'{"answers": {"result": {"type": "noul"}}}', id="noul missing"),
+        pytest.param(_noul_body('"0.9"'), id="noul a string"),
+        pytest.param(_noul_body("true"), id="noul a boolean"),
+        pytest.param(_noul_body("1.5"), id="noul above 1"),
+        pytest.param(_noul_body("-0.1"), id="noul below 0"),
+        pytest.param(_noul_body("1" + "0" * 400), id="noul an integer past float"),
+        # Python's json module reads these non-standard constants.
+        pytest.param(_noul_body("NaN"), id="noul NaN"),
+        pytest.param(_noul_body("Infinity"), id="noul Infinity"),
+        pytest.param(_noul_body("-Infinity"), id="noul -Infinity"),
+    ],
+)
+def test_a_2xx_without_a_valid_noul_raises_invalid_model_response(
+    contract_server: _ContractServer, body: bytes
 ) -> None:
-    contract_server.set_response(200, b'{"answers": {"result": {"type": "choice"}}}')
+    # The scheduler turns InvalidModelResponse into OFF (spec section 18); any
+    # other exception would make the sensor unavailable instead.
+    contract_server.set_response(200, body)
 
     with pytest.raises(InvalidModelResponse):
         _evaluate(contract_server.url, INSTRUCTIONS)

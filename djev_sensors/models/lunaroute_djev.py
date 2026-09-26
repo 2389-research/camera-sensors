@@ -136,7 +136,9 @@ def _extract_noul(payload: object) -> float:
     value = result.get("noul")
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise InvalidModelResponse(f"answers.result.noul was not numeric: {value!r}")
-    if not math.isfinite(value):
+    # Only a float can be infinite or NaN. math.isfinite raises OverflowError
+    # for an int too big for a float; the range check below compares it exactly.
+    if isinstance(value, float) and not math.isfinite(value):
         raise InvalidModelResponse("answers.result.noul was not finite")
     if not 0.0 <= value <= 1.0:
         raise InvalidModelResponse(f"answers.result.noul out of [0, 1]: {value!r}")

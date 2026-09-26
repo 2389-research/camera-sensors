@@ -11,7 +11,7 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: rechecks after movement built on `wip/sensor-rechecks` (not merged); couch trial runs on the Mac; deploying to docker-host is blocked because its VM CPU model lacks SSE3/SSE4/POPCNT, which NumPy and OpenCV wheels need
+- Step: rechecks plus a /simplify pass (79 fewer lines, python runs straight from the venv under Docker's init) on `wip/sensor-rechecks`, not merged; `scripts/check --live` passed; six sensors on four cameras run on the Mac; docker-host has the code but is blocked on its VM CPU type
 - Next: after Doctor Biz switches docker-host's VM CPU type to host and reboots it, stop the Mac copy and run `docker compose up -d` in ~/camera-sensors on docker-host; then decide on merging `wip/sensor-rechecks`
 - Open: docker-host VM CPU type; merge of `wip/sensor-rechecks`; whether one model timeout should mark a sensor unavailable (spec section 19) given LunaRoute's slow spells
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development

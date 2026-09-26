@@ -2,7 +2,7 @@
 # ABOUTME: config topic and payload, plus its state, attribute, and availability topics.
 from __future__ import annotations
 
-from djev_sensors.config import AppConfig
+from djev_sensors.config import SERVICE_TOPIC_ID, AppConfig
 
 # Identifies this service to Home Assistant whatever the prefixes: the discovery
 # node ID, the start of every unique ID, and the device identifier.
@@ -28,7 +28,7 @@ def availability_topic(sensor_id: str, config: AppConfig) -> str:
 
 def service_availability_topic(config: AppConfig) -> str:
     """The whole service's availability, which the MQTT Last Will sets offline."""
-    return f"{config.system.mqtt.topic_prefix}/service/availability"
+    return availability_topic(SERVICE_TOPIC_ID, config)
 
 
 def discovery_topic(sensor_id: str, config: AppConfig) -> str:

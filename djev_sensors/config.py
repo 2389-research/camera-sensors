@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import (
@@ -27,10 +27,10 @@ DEFAULT_PROMPT_WRAPPER = (
 
 _ID_PATTERN = re.compile(r"^[a-z0-9_]+$")
 # <topic_prefix>/service/availability is the whole service's availability topic.
-_RESERVED_SENSOR_ID = "service"
+SERVICE_TOPIC_ID = "service"
 _ENV_TOKEN_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _CREDENTIAL_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://[^/@]*:([^/@]*)@")
-_SINGLE_TOKEN_PATTERN = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
+_SINGLE_TOKEN_PATTERN = re.compile(rf"^{_ENV_TOKEN_PATTERN.pattern}$")
 
 
 class ConfigError(Exception):
@@ -55,6 +55,21 @@ def _lookup_env(name: str, env: Mapping[str, str]) -> str:
     if not value:
         raise ValueError(f"environment variable {name} is not set")
     return value
+
+
+def _pop_secret_env(data: dict[str, Any], field: str) -> tuple[dict[str, Any], Any]:
+    """Refuse a literal `field`; pop `<field>_env`, which names its variable.
+
+    Returns a copy of `data` without `<field>_env`, and that key's value, or
+    None when it is absent.
+    """
+    if field in data:
+        raise ValueError(
+            f"{field} must not be set in the config file; set {field}_env "
+            "to the name of the environment variable that holds it"
+        )
+    resolved = dict(data)
+    return resolved, resolved.pop(f"{field}_env", None)
 
 
 def _reject_inline_password(value: str) -> None:
@@ -142,13 +157,7 @@ class MqttConfig(BaseModel):
         """
         if not isinstance(data, dict):
             return data
-        if "password" in data:
-            raise ValueError(
-                "password must not be set in the config file; set password_env "
-                "to the name of the environment variable that holds it"
-            )
-        resolved = dict(data)
-        password_env = resolved.pop("password_env", None)
+        resolved, password_env = _pop_secret_env(data, "password")
         if password_env is not None:
             if not password_env:
                 raise ValueError("password_env must name an environment variable")
@@ -192,13 +201,7 @@ class ModelConfig(BaseModel):
         """
         if not isinstance(data, dict):
             return data
-        if "api_key" in data:
-            raise ValueError(
-                "api_key must not be set in the config file; set api_key_env "
-                "to the name of the environment variable that holds it"
-            )
-        resolved = dict(data)
-        api_key_env = resolved.pop("api_key_env", None)
+        resolved, api_key_env = _pop_secret_env(data, "api_key")
         if not api_key_env:
             raise ValueError("api_key_env is required")
         resolved["api_key"] = _lookup_env(api_key_env, _env_from_context(info.context))
@@ -266,9 +269,9 @@ class AppConfig(BaseModel):
         if not value:
             raise ValueError("at least one sensor is required")
         _validate_ids(value.keys(), "sensor")
-        if _RESERVED_SENSOR_ID in value:
+        if SERVICE_TOPIC_ID in value:
             raise ValueError(
-                f"sensor id {_RESERVED_SENSOR_ID!r} is reserved for the "
+                f"sensor id {SERVICE_TOPIC_ID!r} is reserved for the "
                 "service's own availability topic"
             )
         return value

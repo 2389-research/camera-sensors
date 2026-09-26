@@ -53,11 +53,12 @@ class SensorRuntime:
     def recheck_due(self, now: float) -> bool:
         """True when an owed recheck may start: nothing pending, and both the recheck
         interval and the cooldown have passed since the last request began."""
-        if self.rechecks_remaining <= 0 or self.inference_in_flight:
+        if (
+            self.rechecks_remaining <= 0
+            or self.inference_in_flight
+            or self.cooldown_started_at is None
+        ):
             return False
-        if self.cooldown_started_at is None:
-            return False
-        waited = now - self.cooldown_started_at
-        return waited >= self.config.recheck_interval_seconds and self.cooldown_expired(
-            now
+        return now - self.cooldown_started_at >= max(
+            self.config.recheck_interval_seconds, self.config.cooldown_seconds
         )

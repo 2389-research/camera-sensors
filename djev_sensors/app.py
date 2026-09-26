@@ -46,9 +46,6 @@ class ServicePublisher(Protocol):
 class CameraRuntime:
     """What the app tracks for one camera ID (spec section 29)."""
 
-    # The lowest change threshold among the camera's sensors, below which a
-    # score is not worth a frame.change line. None when no sensor uses it.
-    lowest_change_threshold_pct: float | None
     # The previous sample's detection frame; None until the first sample after
     # start or after the camera went offline.
     baseline: NDArray[np.uint8] | None = None
@@ -78,19 +75,7 @@ class Application:
         self._scheduler = scheduler
         self._publisher = publisher
         self._model = model
-        self._cameras = {
-            camera_id: CameraRuntime(
-                min(
-                    (
-                        sensor.change_threshold_pct
-                        for sensor in config.sensors.values()
-                        if sensor.camera == camera_id
-                    ),
-                    default=None,
-                )
-            )
-            for camera_id in config.cameras
-        }
+        self._cameras = {camera_id: CameraRuntime() for camera_id in config.cameras}
 
     async def run(self, stop_event: threading.Event) -> None:
         """Run until `stop_event` is set, then shut down in bounded time.
@@ -200,13 +185,6 @@ class Application:
             # outage, or a new resolution. It only becomes the baseline.
             return
         changed_pct = self._detector.compare(previous, detection_frame).changed_pct
-        threshold = camera.lowest_change_threshold_pct
-        if threshold is not None and changed_pct >= threshold:
-            log_event(
-                "frame.change",
-                camera=sample.camera_id,
-                change_pct=round(changed_pct, 2),
-            )
         # The source frame, never the reduced detection frame, goes on to Djev.
         self._scheduler.on_change(sample.camera_id, sample.image, changed_pct)
 

@@ -6,8 +6,9 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
@@ -42,6 +43,16 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+@dataclass(frozen=True, eq=False)
+class _Look:
+    """One evaluation's input: a sampled frame and what led to looking at it."""
+
+    frame: NDArray[np.uint8]
+    change_pct: float  # the sample's change score, rounded as it is published
+    generation: int  # the camera's generation when the frame was sampled
+    trigger: Literal["change", "recheck"]
+
+
 class SensorScheduler:
     """Decides which sensors each camera change evaluates, and applies the results.
 
@@ -68,10 +79,14 @@ class SensorScheduler:
         self._model_name = config.system.model.model
         self._prompt_wrapper = config.system.model.prompt_wrapper
         self._slots = asyncio.Semaphore(config.system.inference.max_concurrent_requests)
-        self._sensors = [
-            SensorRuntime(sensor_id, sensor_config)
-            for sensor_id, sensor_config in config.sensors.items()
-        ]
+        # Each camera's sensors, in config order.
+        self._camera_sensors: dict[str, list[SensorRuntime]] = {
+            camera_id: [] for camera_id in config.cameras
+        }
+        for sensor_id, sensor_config in config.sensors.items():
+            self._camera_sensors[sensor_config.camera].append(
+                SensorRuntime(sensor_id, sensor_config)
+            )
         # Bumped whenever a camera goes offline, so an evaluation can tell that
         # its frame came from an earlier connection.
         self._camera_generations = dict.fromkeys(config.cameras, 0)
@@ -82,17 +97,20 @@ class SensorScheduler:
     ) -> None:
         """Start an evaluation for each sensor on `camera_id` this sample calls for.
 
-        A change that meets a sensor's threshold triggers a look when the sensor
-        has no evaluation pending and its cooldown has expired. It also owes the
-        sensor `recheck_count` more looks at the newest frame, which later
-        samples take up one at a time as each comes due. Never blocks.
+        A change that meets any of the camera's sensor thresholds is logged as
+        `frame.change` first. A change that meets a sensor's threshold triggers
+        a look when the sensor has no evaluation pending and its cooldown has
+        expired. It also owes the sensor `recheck_count` more looks at the
+        newest frame, which later samples take up one at a time as each comes
+        due. Never blocks.
         """
         now = self._clock()
         generation = self._camera_generations[camera_id]
         change_pct = round(changed_pct, 2)
-        for sensor in self._sensors:
-            if sensor.config.camera != camera_id:
-                continue
+        sensors = self._camera_sensors[camera_id]
+        if any(changed_pct >= sensor.config.change_threshold_pct for sensor in sensors):
+            log_event("frame.change", camera=camera_id, change_pct=change_pct)
+        for sensor in sensors:
             if changed_pct >= sensor.config.change_threshold_pct:
                 # Movement, looked at now or not: the trickle restarts after it.
                 sensor.rechecks_remaining = sensor.config.recheck_count
@@ -113,7 +131,7 @@ class SensorScheduler:
                     camera=camera_id,
                     change_pct=change_pct,
                 )
-                self._start(sensor, frame, change_pct, generation, "change")
+                self._start(sensor, _Look(frame, change_pct, generation, "change"))
             elif sensor.recheck_due(now):
                 sensor.rechecks_remaining -= 1
                 log_event(
@@ -123,23 +141,14 @@ class SensorScheduler:
                     change_pct=change_pct,
                     remaining=sensor.rechecks_remaining,
                 )
-                self._start(sensor, frame, change_pct, generation, "recheck")
+                self._start(sensor, _Look(frame, change_pct, generation, "recheck"))
 
-    def _start(
-        self,
-        sensor: SensorRuntime,
-        frame: NDArray[np.uint8],
-        change_pct: float,
-        generation: int,
-        trigger: str,
-    ) -> None:
+    def _start(self, sensor: SensorRuntime, look: _Look) -> None:
         """Run one evaluation as its own task, tracked until it finishes."""
         # Set now, not when the request starts, so a sensor still waiting for a
         # slot also refuses a second evaluation.
         sensor.inference_in_flight = True
-        task = asyncio.create_task(
-            self._evaluate(sensor, frame, change_pct, generation, trigger)
-        )
+        task = asyncio.create_task(self._evaluate(sensor, look))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -147,13 +156,12 @@ class SensorScheduler:
         """Record a camera connecting or disconnecting for every sensor it feeds."""
         if not online:
             self._camera_generations[camera_id] += 1
-        for sensor in self._sensors:
-            if sensor.config.camera == camera_id:
-                if not online:
-                    # Rechecks follow movement; after an outage, only new movement
-                    # counts.
-                    sensor.rechecks_remaining = 0
-                self._set_availability(sensor, camera_available=online)
+        for sensor in self._camera_sensors[camera_id]:
+            if not online:
+                # Rechecks follow movement; after an outage, only new movement
+                # counts.
+                sensor.rechecks_remaining = 0
+            self._set_availability(sensor, camera_available=online)
 
     async def drain(self) -> None:
         """Wait until no evaluation is running, including ones started meanwhile.
@@ -164,41 +172,36 @@ class SensorScheduler:
         while self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
 
-    async def _evaluate(
-        self,
-        sensor: SensorRuntime,
-        frame: NDArray[np.uint8],
-        change_pct: float,
-        generation: int,
-        trigger: str,
-    ) -> None:
-        camera_id = sensor.config.camera
+    async def _evaluate(self, sensor: SensorRuntime, look: _Look) -> None:
         try:
             async with self._slots:
-                if self._camera_generations[camera_id] != generation:
+                if self._discard_if_stale(sensor, look):
                     # Skipped before any request, so no cooldown starts.
-                    log_event(
-                        "inference.discarded", sensor=sensor.sensor_id, camera=camera_id
-                    )
                     return
                 sensor.cooldown_started_at = self._clock()
-                outcome = await self._request(sensor, frame, change_pct)
-            if self._camera_generations[camera_id] != generation:
-                log_event(
-                    "inference.discarded", sensor=sensor.sensor_id, camera=camera_id
-                )
+                outcome = await self._request(sensor, look)
+            if self._discard_if_stale(sensor, look):
                 return
             if isinstance(outcome, BinaryJudgment):
-                self._apply_judgment(sensor, outcome, change_pct, trigger)
+                self._apply_judgment(sensor, outcome, look)
             elif isinstance(outcome, InvalidModelResponse):
-                self._apply_invalid_response(sensor, change_pct, trigger)
+                self._apply_invalid_response(sensor, look)
             else:
                 self._set_availability(sensor, model_available=False)
         finally:
             sensor.inference_in_flight = False
 
+    def _discard_if_stale(self, sensor: SensorRuntime, look: _Look) -> bool:
+        """Log `inference.discarded` and return True if the look's camera went
+        offline since its frame was sampled."""
+        camera_id = sensor.config.camera
+        if self._camera_generations[camera_id] == look.generation:
+            return False
+        log_event("inference.discarded", sensor=sensor.sensor_id, camera=camera_id)
+        return True
+
     async def _request(
-        self, sensor: SensorRuntime, frame: NDArray[np.uint8], change_pct: float
+        self, sensor: SensorRuntime, look: _Look
     ) -> BinaryJudgment | Exception:
         """Ask the model once and log what came back.
 
@@ -210,7 +213,7 @@ class SensorScheduler:
         log_event("inference.started", sensor=sensor_id, camera=camera_id)
         try:
             judgment = await self._model.evaluate_binary(
-                frame, self._instructions(sensor)
+                look.frame, self._instructions(sensor)
             )
         except InvalidModelResponse as exc:
             # The message can quote the model's output, so it stays out of the log.
@@ -247,7 +250,7 @@ class SensorScheduler:
             sensor=sensor_id,
             camera=camera_id,
             true_probability=judgment.true_probability,
-            change_pct=change_pct,
+            change_pct=look.change_pct,
             latency_ms=judgment.latency_ms,
         )
         return judgment
@@ -259,27 +262,19 @@ class SensorScheduler:
         return f"{self._prompt_wrapper}\n\n{sensor.config.prompt}"
 
     def _apply_judgment(
-        self,
-        sensor: SensorRuntime,
-        judgment: BinaryJudgment,
-        change_pct: float,
-        trigger: str,
+        self, sensor: SensorRuntime, judgment: BinaryJudgment, look: _Look
     ) -> None:
         self._set_availability(sensor, model_available=True)
         self._publisher.publish_attributes(
             sensor.sensor_id,
             {
                 "true_probability": judgment.true_probability,
-                "true_threshold": sensor.config.true_threshold,
-                "change_pct": change_pct,
-                "camera": sensor.config.camera,
-                "model": self._model_name,
-                "evaluated_at": self._evaluated_at(),
+                **self._look_attributes(sensor, look),
                 "latency_ms": judgment.latency_ms,
                 "sent_width": judgment.sent_width,
                 "sent_height": judgment.sent_height,
                 "parse_error": False,
-                "trigger": trigger,
+                "trigger": look.trigger,
             },
         )
         state = resolve_state(
@@ -288,9 +283,7 @@ class SensorScheduler:
         if state is not None and state != sensor.state:
             self._publish_state(sensor, state)
 
-    def _apply_invalid_response(
-        self, sensor: SensorRuntime, change_pct: float, trigger: str
-    ) -> None:
+    def _apply_invalid_response(self, sensor: SensorRuntime, look: _Look) -> None:
         self._set_availability(sensor, model_available=True)
         # Spec sections 18 and 31: a malformed answer means OFF, published even
         # when the sensor is already OFF.
@@ -299,14 +292,20 @@ class SensorScheduler:
             sensor.sensor_id,
             {
                 "parse_error": True,
-                "true_threshold": sensor.config.true_threshold,
-                "change_pct": change_pct,
-                "camera": sensor.config.camera,
-                "model": self._model_name,
-                "evaluated_at": self._evaluated_at(),
-                "trigger": trigger,
+                **self._look_attributes(sensor, look),
+                "trigger": look.trigger,
             },
         )
+
+    def _look_attributes(self, sensor: SensorRuntime, look: _Look) -> dict[str, object]:
+        """The attributes both answers publish, `true_threshold` to `evaluated_at`."""
+        return {
+            "true_threshold": sensor.config.true_threshold,
+            "change_pct": look.change_pct,
+            "camera": sensor.config.camera,
+            "model": self._model_name,
+            "evaluated_at": self._evaluated_at(),
+        }
 
     def _publish_state(self, sensor: SensorRuntime, state: bool) -> None:
         if state != sensor.state:

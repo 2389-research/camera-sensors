@@ -903,6 +903,7 @@ def test_an_evaluation_logs_named_events_without_the_prompt(
     messages = [r.getMessage() for r in caplog.records if r.name == "djev_sensors"]
     assert [json.loads(message)["event"] for message in messages] == [
         "sensor.availability_changed",
+        "frame.change",
         "sensor.triggered",
         "inference.started",
         "inference.completed",

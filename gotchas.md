@@ -72,9 +72,9 @@ Read in paho 2.1.0's `client.py`. `on_connect_fail` fires only when `reconnect()
 
 `math.isfinite(10**400)` raises `OverflowError: int too large to convert to float`, and Python's `json` module turns a 401-digit number into exactly such an int. `_extract_noul` checks finiteness only for floats and lets the `0 <= value <= 1` comparison, which is exact for ints, reject the rest. (Verified 2026-09-25.)
 
-## docker-host's virtual CPU can't run NumPy or OpenCV wheels
+## docker-host needed its real CPU passed through
 
-docker-host (192.168.200.8, SSH as harper, login shell fish) is a KVM guest with the generic "Common KVM processor" CPU model, which exposes no SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT, or AVX. NumPy 2.5 (built for x86-64-v2) dies at import with "NumPy was built with baseline optimizations: (X86_V2) but your machine doesn't support: (X86_V2)", and older NumPy and OpenCV wheels still need SSE3, so no dependency pin fixes it. The fix is the VM's CPU type (host, or at least an x86-64-v2 model) in the hypervisor. Watchtower there runs with WATCHTOWER_LABEL_ENABLE=true, so it leaves unlabeled local builds such as `camera-sensors:local` alone. Measured 2026-09-25.
+docker-host (192.168.200.8, SSH as harper, login shell fish) is a KVM guest. Until 2026-09-26 it used the generic "Common KVM processor" model, which lacks the x86-64-v2 instructions (SSSE3, SSE4.1, SSE4.2, POPCNT). NumPy 2.5 requires them and died at import with "NumPy was built with baseline optimizations: (X86_V2) but your machine doesn't support: (X86_V2)". Doctor Biz switched the VM's CPU type to host passthrough (an Intel Core i7-8809G) and the service now runs there. When reading `/proc/cpuinfo`, SSE3 appears as `pni`, not `sse3`; grepping for `sse3` reports it missing on every CPU, which once led to the false claim that no older NumPy could run on the generic model. Watchtower there runs with WATCHTOWER_LABEL_ENABLE=true, so it leaves unlabeled local builds alone.
 
 ## LunaRoute latency can blow past the model timeout
 

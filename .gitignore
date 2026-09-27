@@ -7,3 +7,7 @@ __pycache__/
 config.yaml
 tests/e2e/.run/
 .env
+# Private notes: kept on disk, never published
+.private-journal/
+docs/superpowers/
+docs/audits/

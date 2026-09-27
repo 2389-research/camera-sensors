@@ -1,4 +1,4 @@
-# Djev RTSP → Home Assistant Binary Sensors
+# Djev RTSP → Home Assistant binary sensors
 
 # 1. Purpose
 
@@ -12,9 +12,9 @@ Examples:
 - `binary_sensor.people_on_couch`
 - `binary_sensor.someone_at_door`
 
-The service continuously watches configured RTSP streams cheaply.
+The service watches the configured RTSP streams continuously and cheaply.
 
-It **does not continuously run inference**.
+It does not run inference all the time.
 
 Instead:
 
@@ -42,9 +42,7 @@ enough visual change?
    Home Assistant
 ```
 
-The central design principle is:
-
-> **Pixels locally decide when something might have changed. Djev decides what the change means.**
+The design follows one rule: pixels decide locally when something might have changed, and Djev decides what the change means.
 
 ---
 
@@ -88,7 +86,7 @@ v0.1 does NOT need:
 - model-generated prose
 - Home Assistant REST/WebSocket APIs
 
-These can be added later without changing the fundamental sensor abstraction.
+Later versions can add them without changing the sensor abstraction.
 
 ---
 
@@ -218,17 +216,17 @@ sensors:
     recheck_interval_seconds: 5
 ```
 
-Secrets MUST be sourced from environment variables rather than committed configuration.
+Secrets MUST come from environment variables rather than committed configuration.
 
 ---
 
 # 6. Camera model
 
-A camera is identified by its configured camera ID.
+The configured camera ID identifies a camera.
 
 Multiple sensors may reference the same camera.
 
-Only **one RTSP connection** may exist for a camera.
+Only one RTSP connection may exist for a camera.
 
 Conceptually:
 
@@ -253,7 +251,7 @@ If two camera entries resolve to exactly the same RTSP URL, implementations SHOU
 
 The RTSP worker continuously decodes the stream.
 
-Change detection does **not** need to run against every decoded frame.
+Change detection does not need to run against every decoded frame.
 
 Instead it samples according to:
 
@@ -267,11 +265,11 @@ Example:
 fps: 1
 ```
 
-means approximately one frame comparison each second.
+means about one frame comparison each second.
 
 The full-resolution decoded frame MUST remain available until inference is dispatched. The transport always JPEG-encodes the transmitted image: at full size when that fits LunaRoute's budget and neither side exceeds Djev's limit of 2048 pixels, otherwise resized first.
 
-A separate reduced frame is generated for change detection.
+Change detection uses a separate reduced frame.
 
 ---
 
@@ -312,11 +310,7 @@ change_pct = (
 ) * 100
 ```
 
-The comparison baseline MUST always be:
-
-> **the immediately previous sampled frame**
-
-—not the previous frame that triggered inference.
+The comparison baseline MUST always be the immediately previous sampled frame, not the previous frame that triggered inference.
 
 After calculating the score:
 
@@ -324,7 +318,7 @@ After calculating the score:
 previous_frame = current_frame
 ```
 
-regardless of whether inference is triggered.
+whether or not inference is triggered.
 
 ---
 
@@ -371,7 +365,7 @@ without modifying sensor logic.
 
 # 10. Sensor triggering
 
-Each camera produces **one shared change score**.
+Each camera produces one shared change score.
 
 Every sensor attached to that camera compares that same score against its own threshold.
 
@@ -405,7 +399,7 @@ There is no inference at application startup.
 
 The first sampled frame establishes the comparison baseline.
 
-Only a subsequent visual change can cause inference, directly or through the rechecks that follow it (section 11).
+Only a later visual change can cause inference, directly or through the rechecks that follow it (section 11).
 
 ---
 
@@ -450,7 +444,7 @@ recheck_interval_seconds: 10
 
 There MUST be at most one active Djev request for a given sensor.
 
-A global concurrency limiter SHOULD also prevent excessive simultaneous model requests.
+A global concurrency limiter SHOULD also prevent too many simultaneous model requests.
 
 Default:
 
@@ -464,17 +458,17 @@ If another qualifying frame appears while a sensor evaluation is active:
 do not create another simultaneous request
 ```
 
-The implementation MAY retain the newest qualifying frame as pending, replacing any older pending frame.
+The implementation MAY retain the newest qualifying frame as pending, in place of any older pending frame.
 
-Older frames are never queued FIFO.
+It never queues older frames FIFO.
 
-This matches Djev's documented live-frame pattern of keeping one frame request in flight and preferring the newest frame rather than building a stale queue.
+This matches the live-frame pattern Djev documents: keep one frame request in flight and prefer the newest frame rather than build a stale queue.
 
 ---
 
 # 13. Djev question type
 
-Every Home Assistant binary sensor maps naturally to a Djev **Noul** judgment.
+Every Home Assistant binary sensor maps to a Djev Noul judgment.
 
 Djev documents Noul as a yes/no judgment returning:
 
@@ -482,9 +476,9 @@ Djev documents Noul as a yes/no judgment returning:
 answers.<question_id>.noul
 ```
 
-where the value is the probability of **yes**, between `0` and `1`. It does not expose a separate Noul confidence field.
+where the value is the probability of yes, between `0` and `1`. Djev does not expose a separate Noul confidence field.
 
-Therefore internally use:
+Internally, use:
 
 ```text
 true_probability
@@ -516,9 +510,9 @@ Conceptually the request is:
 
 The verified LunaRoute `/v1/systemone` route accepts an image object in the question instructions. It rejects a top-level `images` field. This differs from Djev's direct API, so the wire format belongs only in the LunaRoute adapter.
 
-LunaRoute's measured request limit was about 48 KB on 2026-09-24/25, including base64 image text. The adapter MUST measure the serialized request and fit it under a conservative 45,000-byte budget. Djev rejects images over 2048 pixels per side, so the first candidate is the source frame, scaled down when needed to 2048 pixels on its longest side. The adapter SHOULD keep that size when it fits, then reduce JPEG quality and dimensions until it does. It MUST record the sent width and height. If no usable image fits, it treats the evaluation as a model-path failure with a clear diagnostic. These limits may change and must be checked again during implementation.
+LunaRoute's measured request limit was about 48 KB on 2026-09-24/25, including base64 image text. The adapter MUST measure the serialized request and fit it under a conservative 45,000-byte budget. Djev rejects images over 2048 pixels per side, so the first candidate is the source frame, scaled down when needed to 2048 pixels on its longest side. The adapter SHOULD keep that size when it fits, then reduce JPEG quality and dimensions until it does. It MUST record the sent width and height. If no usable image fits, it treats the evaluation as a model-path failure with a clear diagnostic. These limits may change, so check them again during implementation.
 
-The application sends **one Djev request per sensor**, even when several sensors trigger from the same frame.
+The application sends one Djev request per sensor, even when several sensors trigger from the same frame.
 
 ---
 
@@ -547,7 +541,7 @@ and implement:
 LunaRouteDjevClient
 ```
 
-The working local `test.sh` establishes `POST https://gw.lunaroute.com/v1/systemone` for text questions. Prior live image probes in the neighboring `mm-decisions` project establish the image-object format and measured request limit above. The adapter MUST validate a fresh image response during implementation and keep these LunaRoute details out of camera, state, and MQTT code.
+The working local `test.sh` establishes `POST https://gw.lunaroute.com/v1/systemone` for text questions. Earlier live image probes in the neighboring `mm-decisions` project establish the image-object format and the measured request limit above. The adapter MUST validate a fresh image response during implementation and keep these LunaRoute details out of camera, state, and MQTT code.
 
 No direct `api.djev.dev` fallback should occur silently.
 
@@ -627,17 +621,17 @@ produces:
 0.00 <= p <= 0.20    OFF
 ```
 
-This preserves the explicit requirement that low-confidence / ambiguous observations must not overwrite an existing state.
+The band enforces the rule that a low-confidence or ambiguous observation must not overwrite an existing state.
 
 There is no multi-observation debounce.
 
-One sufficiently confident inference can immediately transition the binary sensor.
+A single inference with enough confidence can transition the binary sensor at once.
 
 ---
 
 # 18. Malformed model output
 
-If LunaRoute successfully returns a response but the expected Djev result cannot be parsed or validated:
+If LunaRoute returns a response but the adapter cannot parse or validate the expected Djev result:
 
 ```text
 sensor → OFF
@@ -645,9 +639,9 @@ sensor → OFF
 
 This is intentionally different from a transport/model failure.
 
-Publish diagnostic attributes indicating the malformed response.
+Publish diagnostic attributes that flag the malformed response.
 
-Do not attempt to infer meaning from arbitrary text.
+Do not try to infer meaning from arbitrary text.
 
 ---
 
@@ -670,7 +664,7 @@ On model failure:
 sensor availability → offline
 ```
 
-The previous binary state is retained internally but Home Assistant sees the entity as unavailable.
+The service keeps the previous binary state internally, but Home Assistant sees the entity as unavailable.
 
 The sensor becomes available again after the next successful Djev evaluation.
 
@@ -700,7 +694,7 @@ Suggested sequence:
 30s...
 ```
 
-On successful camera recovery, attached sensors may become available again provided they are not independently unavailable due to a model failure.
+When the camera recovers, attached sensors may become available again unless a model failure keeps them unavailable on its own.
 
 ---
 
@@ -716,7 +710,7 @@ sensor_available = (
 )
 ```
 
-This avoids a recovered camera accidentally clearing an outstanding model error.
+This keeps a recovered camera from clearing an outstanding model error by accident.
 
 ---
 
@@ -761,11 +755,11 @@ Publish state with:
 retain = false
 ```
 
-This means Home Assistant may show the entity as unknown following a Home Assistant restart until another state message is received; that follows Home Assistant's MQTT binary sensor behavior for non-retained state.
+So after a Home Assistant restart, the entity may show as unknown until Home Assistant receives another state message. That is Home Assistant's normal MQTT binary sensor behavior for non-retained state.
 
-MQTT reconnect MUST NOT cause all current states to be republished.
+An MQTT reconnect MUST NOT trigger a republish of all current states.
 
-A new state is published only as the result of a subsequent evaluation.
+The service publishes a new state only as the result of a later evaluation.
 
 ---
 
@@ -780,9 +774,9 @@ offline
 
 Each sensor has its own availability topic. Discovery also references a shared service availability topic for MQTT Last Will. Both must be online for the entity to be available.
 
-Home Assistant MQTT binary sensors natively support availability topics and display the entity as unavailable when the configured unavailable payload is received.
+Home Assistant MQTT binary sensors support availability topics natively and show the entity as unavailable when they receive the configured unavailable payload.
 
-The application SHOULD use MQTT Last Will for process-level failure in addition to explicit camera/model failure messages.
+The application SHOULD use MQTT Last Will for process-level failure as well as explicit camera/model failure messages.
 
 ---
 
@@ -798,7 +792,7 @@ homeassistant/binary_sensor/djev_sensors/<sensor_id>/config
 
 Discovery configuration messages MUST be retained.
 
-Home Assistant documents retained MQTT Discovery config so entities can be reconstructed after Home Assistant reconnects or restarts.
+Home Assistant documents retained MQTT Discovery config so that it can rebuild entities after it reconnects or restarts.
 
 Example:
 
@@ -853,7 +847,7 @@ After every completed inference, publish:
 }
 ```
 
-`trigger` is `change` for a look triggered by movement and `recheck` for a follow-up look at the newest frame (section 11). `parse_error` is always sent: `true` after a malformed answer (section 18), `false` otherwise.
+`trigger` is `change` for a look triggered by movement and `recheck` for a follow-up look at the newest frame (section 11). `parse_error` is always present: `true` after a malformed answer (section 18), `false` otherwise.
 
 Not implemented in v0.1:
 
@@ -872,7 +866,7 @@ Do not invent a Djev `confidence` value.
 
 # 27. State persistence
 
-No persistent state database is required in v0.1.
+v0.1 requires no persistent state database.
 
 Sensor state exists in memory.
 
@@ -1059,7 +1053,7 @@ async def evaluate(sensor, frame, change):
 ```
 
 Compare as `p + t <= 1.0` rather than `p <= 1 - threshold` above: floating
-point can round `1 - threshold` down, admitting a probability that should be
+point can round `1 - threshold` down and admit a probability that should be
 OFF into the uncertainty band. `djev_sensors/state.py` uses the sum.
 
 Publishing only on state change is the default.
@@ -1094,7 +1088,7 @@ Camera default:
 fps: 1
 ```
 
-These are operational starting values, not calibrated universal thresholds.
+These are starting values to run with, not thresholds calibrated for every scene.
 
 ---
 
@@ -1148,7 +1142,7 @@ Example:
 }
 ```
 
-Raw camera images MUST NOT be written to disk by default.
+The service MUST NOT write raw camera images to disk by default.
 
 ---
 
@@ -1172,7 +1166,7 @@ sensor_transitions_total
 mqtt_publish_failures_total
 ```
 
-Metrics support can initially be log-derived rather than requiring Prometheus.
+Metrics support can at first come from logs rather than require Prometheus.
 
 ---
 
@@ -1246,7 +1240,7 @@ services:
       - ./config.yaml:/app/config.yaml:ro
 ```
 
-No persistent volume is required.
+The container needs no persistent volume.
 
 ---
 
@@ -1295,7 +1289,7 @@ Given a running camera:
 service starts
 ```
 
-no Djev call occurs until a sampled frame differs sufficiently from its predecessor.
+no Djev call occurs until a sampled frame differs enough from its predecessor.
 
 ### Camera-level change
 
@@ -1312,13 +1306,11 @@ only sensor A triggers.
 
 ### Independent inference
 
-If two sensors qualify from the same frame:
+If two sensors qualify from the same frame, the service generates:
 
 ```text
 2 independent Djev requests
 ```
-
-are generated.
 
 ### Inference image
 
@@ -1344,11 +1336,11 @@ p=.55 → unchanged
 
 A single qualifying inference can transition state.
 
-No repeated confirmation is required.
+It needs no repeated confirmation.
 
 ### Cooldown
 
-A sensor receiving repeated changes cannot invoke inference more frequently than its configured cooldown.
+A sensor that receives repeated changes cannot invoke inference more often than its configured cooldown allows.
 
 ### Rechecks
 
@@ -1356,7 +1348,7 @@ After a change-triggered evaluation, a sensor rechecks the newest frame `recheck
 
 ### Bad response
 
-A successful HTTP response containing an invalid Djev result publishes:
+A successful HTTP response that contains an invalid Djev result publishes:
 
 ```text
 OFF
@@ -1380,7 +1372,7 @@ RTSP loss publishes:
 availability = offline
 ```
 
-for all associated sensors and initiates exponential reconnect.
+for all attached sensors and starts exponential reconnect.
 
 ### MQTT Discovery
 
@@ -1394,7 +1386,7 @@ State messages are not retained.
 
 ### MQTT reconnect
 
-MQTT reconnection alone does not cause previous sensor state to be republished.
+MQTT reconnection alone does not republish previous sensor state.
 
 ---
 
@@ -1455,12 +1447,12 @@ sensors:
     cooldown_seconds: 5
 ```
 
-restart the service, and—without touching Home Assistant configuration—eventually get:
+restart the service and, without touching Home Assistant configuration, eventually get:
 
 ```text
 binary_sensor.someone_at_door
 ```
 
-whose state is semantically determined from the RTSP camera image by Djev and whose model probability and evaluation metadata are visible as Home Assistant attributes.
+whose state Djev determines semantically from the RTSP camera image, and whose model probability and evaluation metadata appear as Home Assistant attributes.
 
 That is the product.

@@ -11,7 +11,7 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: merge `wip/rename-camera-sensors` into `main` and push (finishing option 1 plus push)
+- Step: none; this plan's work is done. Open-source preparation continues in `docs/superpowers/plans/2026-09-27-open-source-prep.md`
 - Next: none required; the first redeploy of docker-host and aibox03 after the rename needs `docker compose up -d --build --remove-orphans`
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate; the repo has no license file, and making the repo itself public would expose internal hosts and IPs in gotchas.md and the plan
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
@@ -33,7 +33,7 @@
 - Approved: "push" (2026-09-27) — push main
 - Approved: "the repo name is camera-sensors. the readme says djev-sensors. let's call it camera sensors" (2026-09-27) — rename the project to camera-sensors
 - Approved: "1, push" (2026-09-27) — merge `wip/rename-camera-sensors` into main locally, then push main
-- Compactions: 0
+- Compactions: 1
 
 ## Global Constraints
 

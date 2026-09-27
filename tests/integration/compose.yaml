@@ -1,6 +1,6 @@
 # ABOUTME: Isolated integration-test stack: MediaMTX serves RTSP over TCP and Mosquitto
 # ABOUTME: serves MQTT, each published on 127.0.0.1 only. Started by tests/integration.
-name: djev-sensors-test
+name: camera-sensors-test
 
 services:
   mediamtx:

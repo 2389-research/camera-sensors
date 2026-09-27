@@ -1,6 +1,6 @@
 # ABOUTME: End-to-end stack for tests/e2e: MediaMTX, Mosquitto, Home Assistant, and the
 # ABOUTME: service built from the repo's Dockerfile. Host ports bind 127.0.0.1 only.
-name: djev-sensors-e2e
+name: camera-sensors-e2e
 
 services:
   mediamtx:
@@ -26,7 +26,7 @@ services:
       - "127.0.0.1:18123:8123"
 
   # Each test starts and removes this service; the stack fixture names the others.
-  djev-sensors:
+  camera-sensors:
     build: ../..
     init: true  # as in the root compose.yaml: signals reach python from the start
     environment:

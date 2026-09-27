@@ -11,7 +11,7 @@ import pytest
 from tests.local_ports import require_free, wait_until_serving
 
 COMPOSE_FILE = Path(__file__).with_name("compose.yaml")
-COMPOSE_PROJECT = "djev-sensors-test"
+COMPOSE_PROJECT = "camera-sensors-test"
 RTSP_PORT = 18554
 MQTT_PORT = 18883
 

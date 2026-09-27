@@ -19,8 +19,8 @@ from tests.local_ports import require_free, wait_until_serving
 
 E2E_DIR = Path(__file__).parent
 COMPOSE_FILE = E2E_DIR / "compose.yaml"
-COMPOSE_PROJECT = "djev-sensors-e2e"
-SERVICE = "djev-sensors"
+COMPOSE_PROJECT = "camera-sensors-e2e"
+SERVICE = "camera-sensors"
 # Holds the service's config, which compose.yaml mounts read-only. It sits in the repo
 # rather than pytest's tmp_path because Colima shares only the home directory.
 RUN_DIR = E2E_DIR / ".run"

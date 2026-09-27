@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-IMAGE = "djev-sensors:strict-umask-test"
+IMAGE = "camera-sensors:strict-umask-test"
 BUILD_CONTEXT = (
     "Dockerfile",
     ".dockerignore",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ABOUTME: Canonical verification entry point for djev-sensors.
+# ABOUTME: Canonical verification entry point for camera-sensors.
 # ABOUTME: Runs lint, format check, mypy, and tests; --live also runs end-to-end tests.
 set -euo pipefail
 

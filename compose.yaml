@@ -1,8 +1,8 @@
 # ABOUTME: Runs the service as a single container (spec section 36): the config mounted
 # ABOUTME: read-only; the key, password, and camera URLs come from the environment.
 services:
-  djev-sensors:
-    image: djev-sensors:latest
+  camera-sensors:
+    image: camera-sensors:latest
     build: .
 
     restart: unless-stopped

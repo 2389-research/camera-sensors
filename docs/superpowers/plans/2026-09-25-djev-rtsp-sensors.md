@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: fixing every finding of the 2026-09-26 documentation audit (docs/audits/AUDIT_REPORT_2026-09-26.md) and rewriting the README's instructions for clarity, on `wip/docs-audit-fixes`; home runs on docker-host, the office (20 sensors) on aibox03
-- Next: `scripts/check`, then the finishing options
+- Step: every 2026-09-26 audit finding fixed, README rewritten for clarity, and a GHCR image workflow added (multi-arch, publishes on pushes to main), all on `wip/docs-audit-fixes`; `scripts/check` green (213 tests), actionlint clean
+- Next: Doctor Biz picks a finishing option; the image first publishes when main is pushed, and stays private until the package or repo is made public
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate, which the office's people-present config does
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally

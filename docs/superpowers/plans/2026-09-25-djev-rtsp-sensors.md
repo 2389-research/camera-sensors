@@ -11,7 +11,7 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: two deployments run main: home (six sensors, four cameras) on docker-host, and the office (seven presence sensors on seven cameras, office broker on officetools) on aibox03. The GitHub repo moved to 2389-research/camera-sensors (private) on 2026-09-26; local main is 12 commits ahead of it, not pushed
+- Step: two deployments run main: home (six sensors, four cameras) on docker-host, and the office (20 sensors on seven cameras: presence per camera, the couch, desk and table spots, a three-or-more-people count, two doors, and the work area lights; office broker on officetools) on aibox03. The GitHub repo moved to 2389-research/camera-sensors (private) on 2026-09-26; local main is 12 commits ahead of it, not pushed
 - Next: none
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate, which the office's people-present config does
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development

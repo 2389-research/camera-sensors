@@ -1,6 +1,6 @@
 # Djev RTSP → Home Assistant Binary Sensors
 
-## 1. Purpose
+# 1. Purpose
 
 Build a small headless service that turns arbitrary RTSP camera streams into semantic Home Assistant binary sensors using Djev multimodal inference routed through LunaRoute.
 
@@ -199,6 +199,8 @@ sensors:
     true_threshold: 0.80
     change_threshold_pct: 2.5
     cooldown_seconds: 10
+    recheck_count: 3
+    recheck_interval_seconds: 10
 
   gate_open:
     name: Gate Open
@@ -212,6 +214,8 @@ sensors:
     true_threshold: 0.85
     change_threshold_pct: 1.5
     cooldown_seconds: 5
+    recheck_count: 2
+    recheck_interval_seconds: 5
 ```
 
 Secrets MUST be sourced from environment variables rather than committed configuration.
@@ -265,7 +269,7 @@ fps: 1
 
 means approximately one frame comparison each second.
 
-The full-resolution decoded frame MUST remain available until inference is dispatched. The transport uses it at full size when the request fits LunaRoute's budget and neither side exceeds Djev's limit of 2048 pixels; otherwise it resizes and JPEG-encodes only the transmitted image.
+The full-resolution decoded frame MUST remain available until inference is dispatched. The transport always JPEG-encodes the transmitted image: at full size when that fits LunaRoute's budget and neither side exceeds Djev's limit of 2048 pixels, otherwise resized first.
 
 A separate reduced frame is generated for change detection.
 
@@ -280,9 +284,9 @@ For each sampled frame:
 ```text
 full frame
     ↓
-resize to configured detector resolution
-    ↓
 grayscale
+    ↓
+resize to configured detector resolution
     ↓
 optional blur
     ↓
@@ -603,6 +607,10 @@ otherwise
     → KEEP PREVIOUS STATE
 ```
 
+Compare as `p + t <= 1.0`, not `p <= 1 - t`: floating point can round `1 - t`
+down, which would then admit a probability that should be OFF into the
+uncertainty band instead. `djev_sensors/state.py` uses the sum.
+
 A valid `true_threshold` is above 0.5 and at most 1. At 0.5 or below, the ON and OFF ranges would overlap and leave no uncertainty band.
 
 Example:
@@ -798,6 +806,7 @@ Example:
 {
   "name": "Gate Open",
   "unique_id": "djev_sensors_gate_open",
+  "default_entity_id": "binary_sensor.gate_open",
   "state_topic": "djev-sensors/gate_open/state",
   "json_attributes_topic": "djev-sensors/gate_open/attributes",
   "availability": [
@@ -818,6 +827,8 @@ Example:
 }
 ```
 
+`default_entity_id` asks Home Assistant for `binary_sensor.gate_open` directly; without it, Home Assistant would prefix the derived entity ID with the device name instead, which is why section 40's `binary_sensor.someone_at_door` depends on it.
+
 Home Assistant MQTT binary sensors support `state_topic`, `json_attributes_topic`, an `availability` list with `availability_mode`, `device_class`, and `unique_id`.
 
 ---
@@ -837,17 +848,17 @@ After every completed inference, publish:
   "latency_ms": 241,
   "sent_width": 768,
   "sent_height": 432,
+  "parse_error": false,
   "trigger": "change"
 }
 ```
 
-`trigger` is `change` for a look triggered by movement and `recheck` for a follow-up look at the newest frame (section 11).
+`trigger` is `change` for a look triggered by movement and `recheck` for a follow-up look at the newest frame (section 11). `parse_error` is always sent: `true` after a malformed answer (section 18), `false` otherwise.
 
-Optional diagnostic fields:
+Not implemented in v0.1:
 
 ```json
 {
-  "parse_error": false,
   "model_request_id": "...",
   "frame_age_ms": 84
 }
@@ -886,25 +897,27 @@ It does NOT perform startup inference.
 
 # 28. Sensor runtime state
 
-Suggested runtime object:
+Suggested runtime object, matching the implementation (`djev_sensors/state.py`):
 
 ```python
+@dataclass
 class SensorRuntime:
-    config
+    sensor_id: str
+    config: SensorConfig
 
-    state: bool | None
+    state: bool | None = None
 
-    last_true_probability: float | None
-    last_change_pct: float | None
+    camera_available: bool = False
+    model_available: bool = True
 
-    last_evaluation_at: datetime | None
-    last_trigger_at: datetime | None
+    inference_in_flight: bool = False
+    cooldown_started_at: float | None = None  # monotonic seconds
+    rechecks_remaining: int = 0  # looks at the newest frame still owed
 
-    model_available: bool
-
-    inference_in_flight: bool
-    pending_frame: Frame | None
-    rechecks_remaining: int
+    @property
+    def available(self) -> bool:
+        """Both conditions must hold (section 21)."""
+        return self.camera_available and self.model_available
 ```
 
 ---
@@ -1045,6 +1058,10 @@ async def evaluate(sensor, frame, change):
         )
 ```
 
+Compare as `p + t <= 1.0` rather than `p <= 1 - threshold` above: floating
+point can round `1 - threshold` down, admitting a probability that should be
+OFF into the uncertainty band. `djev_sensors/state.py` uses the sum.
+
 Publishing only on state change is the default.
 
 ---
@@ -1088,9 +1105,13 @@ Logs SHOULD be structured.
 Important events:
 
 ```text
+service.started
+service.stopped
+
 camera.connected
 camera.disconnected
 camera.reconnecting
+camera.callback_failed
 
 frame.change
 
@@ -1102,13 +1123,16 @@ inference.started
 inference.completed
 inference.failed
 inference.invalid_response
+inference.discarded
 
 sensor.state_changed
 sensor.availability_changed
 
 mqtt.connected
 mqtt.disconnected
+mqtt.connect_failed
 mqtt.discovery_published
+mqtt.publish_failed
 ```
 
 Example:
@@ -1162,12 +1186,17 @@ djev-sensors/
 ├── compose.yaml
 ├── config.example.yaml
 │
+├── scripts/
+│   └── check
+│
 ├── djev_sensors/
 │   ├── __main__.py
 │   ├── config.py
 │   ├── app.py
 │   │
 │   ├── camera.py
+│   ├── events.py
+│   ├── frames.py
 │   ├── scheduler.py
 │   ├── state.py
 │   │
@@ -1184,12 +1213,9 @@ djev-sensors/
 │       └── discovery.py
 │
 └── tests/
-    ├── fixtures/
-    ├── test_change_detection.py
-    ├── test_sensor_state.py
-    ├── test_scheduler.py
-    ├── test_model_response.py
-    └── test_mqtt_discovery.py
+    ├── unit/
+    ├── integration/
+    └── e2e/
 ```
 
 ---
@@ -1204,8 +1230,11 @@ Example:
 services:
   djev-sensors:
     image: djev-sensors:latest
+    build: .
 
     restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
 
     environment:
       LUNAROUTE_API_KEY: ${LUNAROUTE_API_KEY}

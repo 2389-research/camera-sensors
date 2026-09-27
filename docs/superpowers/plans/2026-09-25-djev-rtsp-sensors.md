@@ -11,9 +11,9 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: merge `wip/docs-audit-fixes` into `main` approved (finishing option 1): audit fixes, the rewritten README, and the GHCR image workflow; `scripts/check` green (213 tests)
-- Next: none required; pushing main publishes the image `ghcr.io/2389-research/camera-sensors` (private until the package or repo is made public)
-- Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate, which the office's people-present config does
+- Step: README describes pulling the public image; merging `wip/public-image-docs` into main and pushing, which runs the image workflow for the first time
+- Next: watch the first image build; after Doctor Biz makes the package public, verify an anonymous pull of both architectures
+- Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate; the repo has no license file, and making the repo itself public would expose internal hosts and IPs in gotchas.md and the plan
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
 - Approved: "the old one isn't exposed. do 2, and 3" (2026-09-25) — run the live gates with the existing LunaRoute key (no rotation); fix the two before-shipping items
@@ -25,6 +25,7 @@
 - Approved: "yep. let's do it. also can we move the repo to 2389-research" (2026-09-26) — deploy the office cameras to aibox03; transfer the GitHub repo to 2389-research
 - Approved: "let's fix all the details. and make the sintructions super clear." (2026-09-26) — fix every audit finding and make the README instructions clear
 - Approved: "1" (2026-09-26) — finishing option 1 for `wip/docs-audit-fixes`, merge back to main locally
+- Approved: "yep. push." (2026-09-27) — merge `wip/public-image-docs` into main and push main
 - Compactions: 0
 
 ## Global Constraints

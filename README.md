@@ -56,6 +56,7 @@ identifiers, so changing them would turn every sensor into a new entity.
 - [Deploying, updating, and changing sensors](#deploying-updating-and-changing-sensors)
 - [Operating](#operating)
 - [Contributing](#contributing)
+- [License](#license)
 
 ## Getting started
 
@@ -1021,3 +1022,12 @@ any other argument.
 
 Never put a key, a broker password, or a camera URL in a commit, a test, or
 an issue. Git ignores `.env` and `config.yaml` for that reason.
+
+## License
+
+camera-sensors is available under the MIT License. [LICENSE](LICENSE) holds
+the full text.
+
+The diagrams in `docs/images` embed the IBM Plex Sans and IBM Plex Mono
+fonts. The fonts keep their own license, the SIL Open Font License 1.1, and
+its text sits in `docs/images/fonts`.

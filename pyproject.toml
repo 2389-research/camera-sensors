@@ -1,6 +1,7 @@
 [project]
 name = "camera-sensors"
 version = "0.1.0"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "av>=18.1.0",

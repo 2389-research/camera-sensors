@@ -541,7 +541,7 @@ and implement:
 LunaRouteDjevClient
 ```
 
-The working local `test.sh` establishes `POST https://gw.lunaroute.com/v1/systemone` for text questions. Earlier live image probes in the neighboring `mm-decisions` project establish the image-object format and the measured request limit above. The adapter MUST validate a fresh image response during implementation and keep these LunaRoute details out of camera, state, and MQTT code.
+The working local `test.sh` establishes `POST https://gw.lunaroute.com/v1/systemone` for text questions. Earlier live image probes in a sibling project establish the image-object format and the measured request limit above. The adapter MUST validate a fresh image response during implementation and keep these LunaRoute details out of camera, state, and MQTT code.
 
 No direct `api.djev.dev` fallback should occur silently.
 

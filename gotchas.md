@@ -2,7 +2,7 @@
 
 ## LunaRoute Djev image requests
 
-The local `test.sh` confirms `POST https://gw.lunaroute.com/v1/systemone` for text. Live probes recorded in `../mm-decisions/gotchas.md` on 2026-09-24/25 found that the gateway accepts an image data URL inside `questions.<id>.instructions.image`, rejects top-level `images`, and rejects requests at about 48 KB because it counts base64 against model input tokens. Use a 45,000-byte serialized-body budget and recheck it with a live image request during implementation.
+The local `test.sh` confirms `POST https://gw.lunaroute.com/v1/systemone` for text. Live probes in a sibling project on 2026-09-24/25 found that the gateway accepts an image data URL inside `questions.<id>.instructions.image`, rejects top-level `images`, and rejects requests at about 48 KB because it counts base64 against model input tokens. Use a 45,000-byte serialized-body budget and recheck it with a live image request during implementation.
 
 Doctor Biz approved keeping decoded frames at source resolution in memory and resizing only the transmitted JPEG when needed. Attributes must show the dimensions sent. Djev itself rejects images over 2048 pixels per side.
 
@@ -10,7 +10,7 @@ Do not overwrite sampled frames in a latest-only queue before change detection. 
 
 ## LunaRoute key in the local smoke script
 
-`test.sh` once held a literal LunaRoute bearer token. Commit 61ee4d9 began tracking it only after the token gave way to `LUNAROUTE_API_KEY`, and the only other commit to touch the file, b14cacd, just added `pipefail`, so neither the file nor history holds the token. Doctor Biz ruled on 2026-09-25 that this key is not exposed, so it needs no rotation before live tests. The build had treated it as compromised and parked every live gate for hours. Keep keys out of commits and logs, but don't call a key exposed, or block work on rotating it, unless it was committed, pushed, or pasted somewhere shared; when unsure, ask. Never stage or copy a key.
+`test.sh` once held a literal LunaRoute bearer token, but git began tracking the file only after the token gave way to `LUNAROUTE_API_KEY`, so neither the file nor history holds the token. Doctor Biz ruled on 2026-09-25 that this key is not exposed, so it needs no rotation before live tests. The build had treated it as compromised and parked every live gate for hours. Keep keys out of commits and logs, but don't call a key exposed, or block work on rotating it, unless it was committed, pushed, or pasted somewhere shared; when unsure, ask. Never stage or copy a key.
 
 ## ABOUTME lines can turn into encoding declarations
 
@@ -76,18 +76,22 @@ Read in paho 2.1.0's `client.py`. `on_connect_fail` fires only when `reconnect()
 
 `math.isfinite(10**400)` raises `OverflowError: int too large to convert to float`, and Python's `json` module turns a 401-digit number into exactly such an int. `_extract_noul` checks finiteness only for floats and lets the `0 <= value <= 1` comparison, which is exact for ints, reject the rest. (Verified 2026-09-25.)
 
-## docker-host needed its real CPU passed through
+## NumPy 2.5 needs an x86-64-v2 CPU, which a generic KVM model lacks
 
-docker-host (192.168.200.8, SSH as harper, login shell fish) is a KVM guest. Until 2026-09-26 it used the generic "Common KVM processor" model, which lacks the x86-64-v2 instructions (SSSE3, SSE4.1, SSE4.2, POPCNT). NumPy 2.5 requires them and died at import with "NumPy was built with baseline optimizations: (X86_V2) but your machine doesn't support: (X86_V2)". Doctor Biz switched the VM's CPU type to host passthrough (an Intel Core i7-8809G) and the service now runs there. When reading `/proc/cpuinfo`, SSE3 appears as `pni`, not `sse3`; grepping for `sse3` reports it missing on every CPU, which once led to the false claim that no older NumPy could run on the generic model. Watchtower there runs with WATCHTOWER_LABEL_ENABLE=true, so it leaves unlabeled local builds alone.
+The home deployment's server is a KVM guest. Until 2026-09-26 it used the generic "Common KVM processor" model, which lacks the x86-64-v2 instructions (SSSE3, SSE4.1, SSE4.2, POPCNT). NumPy 2.5 requires them and died at import with "NumPy was built with baseline optimizations: (X86_V2) but your machine doesn't support: (X86_V2)". Doctor Biz switched the VM's CPU type to host passthrough (an Intel Core i7-8809G) and the service now runs there. When reading `/proc/cpuinfo`, SSE3 appears as `pni`, not `sse3`; grepping for `sse3` reports it missing on every CPU, which once led to the false claim that no older NumPy could run on the generic model. Watchtower there runs with WATCHTOWER_LABEL_ENABLE=true, so it leaves unlabeled local builds alone.
 
 ## LunaRoute latency can blow past the model timeout
 
 On 2026-09-25 around 04:17-04:21 UTC, LunaRoute answers went from about 0.7 s to 7-14 s, a text-only smoke request took 47 s, and requests at the default 15 s `timeout_seconds` failed with ReadTimeout. Each timeout marks the sensor unavailable until the next successful look (spec section 19), so a slow gateway looks like a flapping sensor in Home Assistant. The couch deployment uses `timeout_seconds: 60`.
 
-## The office cameras run on aibox03, not officetools
+## A 4K camera costs about half a core to decode
 
-The office UniFi Protect streams (NVR at 192.168.23.1) are mostly 4K, and decoding one costs about half a core (measured 0.53 on officetools, 2026-09-26). officetools (192.168.23.123) has only 4 virtual cores, a load near 2.3, and about 2 GB of free disk, so the seven office cameras went to aibox03 (192.168.23.86): a bare-metal i9-13900K with 32 threads and 62 GB, where they use about 2.75 cores and 1.2 GB. aibox03 runs them from ~/camera-sensors and publishes to the office Mosquitto on officetools (192.168.23.123:1883, anonymous). 4K buys nothing here: change detection works at 320 pixels wide and the request budget shrinks what Djev sees to about 768x432, so a camera's Medium (720p) RTSP channel would do the same job for about a ninth of the decode cost.
+The office UniFi Protect streams are mostly 4K, and decoding one costs about half a core (measured 0.53 on 2026-09-26). The first office host had only 4 virtual cores, a load near 2.3, and about 2 GB of free disk, so the seven office cameras moved to a bare-metal i9-13900K with 32 threads and 62 GB, where they use about 2.75 cores and 1.2 GB. 4K buys nothing here: change detection works at 320 pixels wide and the request budget shrinks what Djev sees to about 768x432, so a camera's Medium (720p) RTSP channel would do the same job for about a ninth of the decode cost.
 
 ## Redeploying a deployment from before the camera-sensors rename
 
-On 2026-09-27 the Docker Compose service and the locally built image were renamed from `djev-sensors` to `camera-sensors`. The deployments on docker-host and aibox03 still run the old container, `camera-sensors-djev-sensors-1`. Their first redeploy of newer code must run `docker compose up -d --build --remove-orphans` once. Without `--remove-orphans` the old container keeps running beside the new one, and because both use the MQTT client ID `djev-sensors`, the broker disconnects them from each other over and over. The MQTT topic prefix, the client ID, and the Home Assistant device and entity IDs did not change, so existing entities carry over.
+On 2026-09-27 the Docker Compose service and the locally built image were renamed from `djev-sensors` to `camera-sensors`. Deployments started before the rename still run the old container, `camera-sensors-djev-sensors-1`. Their first redeploy of newer code must run `docker compose up -d --build --remove-orphans` once. Without `--remove-orphans` the old container keeps running beside the new one, and because both use the MQTT client ID `djev-sensors`, the broker disconnects them from each other over and over. The MQTT topic prefix, the client ID, and the Home Assistant device and entity IDs did not change, so existing entities carry over.
+
+## Keep private network details out of this repo
+
+The repository is meant to go public. Describe machines by role, such as "the home server", never by host name, LAN address, or SSH login. Plan docs, audit reports, and `.private-journal/` stay on disk but out of git, and `.gitignore` excludes them.

@@ -1173,7 +1173,7 @@ Metrics support can at first come from logs rather than require Prometheus.
 # 35. Suggested project structure
 
 ```text
-djev-sensors/
+camera-sensors/
 ├── README.md
 ├── pyproject.toml
 ├── Dockerfile
@@ -1222,8 +1222,8 @@ Example:
 
 ```yaml
 services:
-  djev-sensors:
-    image: djev-sensors:latest
+  camera-sensors:
+    image: camera-sensors:latest
     build: .
 
     restart: unless-stopped

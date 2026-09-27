@@ -1,8 +1,8 @@
-# djev-sensors
+# camera-sensors
 
 ## What this is
 
-djev-sensors watches your cameras and turns yes-or-no questions about what
+camera-sensors watches your cameras and turns yes-or-no questions about what
 they see into Home Assistant sensors. You write a question such as "Is a car
 parked inside the garage?" in a small config file. Whenever that camera's
 picture changes, the service asks a vision model your question, and the
@@ -36,8 +36,12 @@ model request until something moves in its frame, and even then it asks Djev at
 most once per sensor per cooldown, plus a few slow rechecks while the scene
 settles. [How does it work?](#how-does-it-work) has the exact cost.
 
-The repository and the container image are named `camera-sensors`. The
-service itself is `djev-sensors`, and its Python package is `djev_sensors`.
+The project, its repository, its container image, and its Docker Compose
+service are all named `camera-sensors`. A few older names stay on purpose.
+The Python package is `djev_sensors`. The MQTT topic prefix and client ID
+default to `djev-sensors`, and the Home Assistant device is named "Djev
+Vision Sensors". Home Assistant files existing sensors under those
+identifiers, so changing them would turn every sensor into a new entity.
 
 ## Contents
 
@@ -97,7 +101,7 @@ What the image does and needs:
 ### 2. Create a folder with three files
 
 ```sh
-mkdir djev-sensors && cd djev-sensors
+mkdir camera-sensors && cd camera-sensors
 ```
 
 `compose.yaml`, using the published image. It keeps the same restart
@@ -106,7 +110,7 @@ repository's own `compose.yaml`:
 
 ```yaml
 services:
-  djev-sensors:
+  camera-sensors:
     image: ghcr.io/2389-research/camera-sensors:latest
     restart: unless-stopped
     init: true
@@ -163,7 +167,7 @@ sensors:
 
 ```sh
 docker compose up -d
-docker compose logs -f djev-sensors
+docker compose logs -f camera-sensors
 ```
 
 ### 4. Confirm it works
@@ -331,7 +335,7 @@ Score question, and prints the reply.
 
    ```sh
    docker compose up -d --build
-   docker compose logs -f djev-sensors
+   docker compose logs -f camera-sensors
    ```
 
 The image is Python 3.12 with dependencies installed by uv from `uv.lock`. The
@@ -744,6 +748,12 @@ published tag.
   then run the same two commands.
 - Built from source: `git pull`, then `docker compose up -d --build`.
 
+If your deployment predates the rename to `camera-sensors`, add
+`--remove-orphans` to that `docker compose up -d` once. Without it, the old
+`djev-sensors` container keeps running next to the new one, and the two
+disconnect each other from the broker over and over because they share an
+MQTT client ID.
+
 `docker compose restart` restarts the existing container with its existing
 environment. It will not pick up a changed `.env` file or a new image; use
 `docker compose up -d` for either.
@@ -912,7 +922,7 @@ so logs cannot supply them.
 
 #### Container startup
 
-- The container restarts over and over: `docker compose logs djev-sensors`
+- The container restarts over and over: `docker compose logs camera-sensors`
   shows `python -m djev_sensors: error: ...` with the config problem, such as a
   missing variable. Fix it and run `docker compose up -d`.
 - `could not read config file /app/config.yaml: ... Is a directory`: the

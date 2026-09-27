@@ -10,7 +10,8 @@ services:
     # before the service installs its own handlers still ends it at once.
     init: true
     # Shutdown waits up to 3 s for the camera hub, 3 s for running evaluations, and
-    # 2 s for the broker to acknowledge "offline"; with cleanup, that can pass 10 s.
+    # up to 5 s more if the publisher's stop needs paho's TCP connect timeout,
+    # about 11 s total (app.py); that fits under this grace period.
     stop_grace_period: 15s
 
     environment:

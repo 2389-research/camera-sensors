@@ -45,8 +45,9 @@ class LunaRouteDjevClient:
 
     Fits the image to the gateway's byte budget on a worker thread (JPEG
     encoding is CPU-bound), then POSTs the exact fitted bytes over one shared
-    `httpx.AsyncClient`. No retries: the next qualifying change retries
-    naturally. Logs nothing itself; the scheduler logs inference events.
+    `httpx.AsyncClient`. No retries: the next qualifying change, or an owed
+    recheck, retries naturally. Logs nothing itself; the scheduler logs
+    inference events.
     """
 
     def __init__(

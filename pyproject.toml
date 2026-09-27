@@ -1,8 +1,11 @@
 [project]
 name = "camera-sensors"
 version = "0.1.0"
+description = "Home Assistant binary sensors from RTSP cameras, judged by Djev through LunaRoute"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
+keywords = ["home-assistant", "mqtt", "rtsp", "camera", "computer-vision", "djev"]
 dependencies = [
     "av>=18.1.0",
     "httpx>=0.28.1",
@@ -12,6 +15,10 @@ dependencies = [
     "pydantic>=2.13.5",
     "pyyaml>=6.0.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/2389-research/camera-sensors"
+Issues = "https://github.com/2389-research/camera-sensors/issues"
 
 [dependency-groups]
 dev = [

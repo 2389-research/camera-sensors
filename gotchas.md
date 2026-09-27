@@ -2,7 +2,7 @@
 
 ## LunaRoute Djev image requests
 
-The local `test.sh` confirms `POST https://gw.lunaroute.com/v1/systemone` for text. Live probes recorded in `../mm-decisions/gotchas.md` on 2026-09-24/25 found that the gateway accepts an image data URL inside `questions.<id>.instructions.image`, rejects top-level `images`, and rejects requests near 49 KB because it counts base64 against model input tokens. Use a 45,000-byte serialized-body budget and recheck it with a live image request during implementation.
+The local `test.sh` confirms `POST https://gw.lunaroute.com/v1/systemone` for text. Live probes recorded in `../mm-decisions/gotchas.md` on 2026-09-24/25 found that the gateway accepts an image data URL inside `questions.<id>.instructions.image`, rejects top-level `images`, and rejects requests at about 48 KB because it counts base64 against model input tokens. Use a 45,000-byte serialized-body budget and recheck it with a live image request during implementation.
 
 Doctor Biz approved keeping decoded frames at source resolution in memory and resizing only the transmitted JPEG when needed. Attributes must show the dimensions sent. Djev itself rejects images over 2048 pixels per side.
 
@@ -10,7 +10,7 @@ Do not overwrite sampled frames in a latest-only queue before change detection. 
 
 ## LunaRoute key in the local smoke script
 
-`test.sh` once held a literal LunaRoute bearer token. Commit 61ee4d9 began tracking it only after the token gave way to `LUNAROUTE_API_KEY`, and no other commit touches it, so neither the file nor history holds the token. Doctor Biz ruled on 2026-09-25 that this key is not exposed, so it needs no rotation before live tests. The build had treated it as compromised and parked every live gate for hours. Keep keys out of commits and logs, but don't call a key exposed, or block work on rotating it, unless it was committed, pushed, or pasted somewhere shared; when unsure, ask. Never stage or copy a key.
+`test.sh` once held a literal LunaRoute bearer token. Commit 61ee4d9 began tracking it only after the token gave way to `LUNAROUTE_API_KEY`, and the only other commit to touch the file, b14cacd, just added `pipefail`, so neither the file nor history holds the token. Doctor Biz ruled on 2026-09-25 that this key is not exposed, so it needs no rotation before live tests. The build had treated it as compromised and parked every live gate for hours. Keep keys out of commits and logs, but don't call a key exposed, or block work on rotating it, unless it was committed, pushed, or pasted somewhere shared; when unsure, ask. Never stage or copy a key.
 
 ## ABOUTME lines can turn into encoding declarations
 

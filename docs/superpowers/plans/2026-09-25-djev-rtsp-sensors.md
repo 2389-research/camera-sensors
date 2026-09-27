@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: every 2026-09-26 audit finding fixed, README rewritten for clarity, and a GHCR image workflow added (multi-arch, publishes on pushes to main), all on `wip/docs-audit-fixes`; `scripts/check` green (213 tests), actionlint clean
-- Next: Doctor Biz picks a finishing option; the image first publishes when main is pushed, and stays private until the package or repo is made public
+- Step: merge `wip/docs-audit-fixes` into `main` approved (finishing option 1): audit fixes, the rewritten README, and the GHCR image workflow; `scripts/check` green (213 tests)
+- Next: none required; pushing main publishes the image `ghcr.io/2389-research/camera-sensors` (private until the package or repo is made public)
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate, which the office's people-present config does
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
@@ -24,6 +24,7 @@
 - Approved: "1" (2026-09-26) — finishing option 1 for `wip/roborev-fixes`, merge back to main locally
 - Approved: "yep. let's do it. also can we move the repo to 2389-research" (2026-09-26) — deploy the office cameras to aibox03; transfer the GitHub repo to 2389-research
 - Approved: "let's fix all the details. and make the sintructions super clear." (2026-09-26) — fix every audit finding and make the README instructions clear
+- Approved: "1" (2026-09-26) — finishing option 1 for `wip/docs-audit-fixes`, merge back to main locally
 - Compactions: 0
 
 ## Global Constraints

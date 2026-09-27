@@ -62,21 +62,32 @@ You need:
 - a LunaRoute API key (looks like `lr_...`);
 - the RTSP URL of each camera you want to watch.
 
-For a deployment you intend to keep running, pin a released version, such as
-`ghcr.io/2389-research/camera-sensors:1.0.0`, instead of `latest`, which
-moves to whatever last merged to `main`.
+### 1. Pull the image
 
-### 1. Log in to the registry
-
-The package is private to the 2389 Research org, so an unauthenticated pull
-fails.
+The image is public, so no login is needed:
 
 ```sh
-docker login ghcr.io -u <your-github-username>
+docker pull ghcr.io/2389-research/camera-sensors:latest
 ```
 
-When prompted for a password, paste a GitHub personal access token with the
-`read:packages` scope.
+| Tag | Points at |
+|---|---|
+| `latest` | The newest commit on `main`. It moves with every merge. |
+| `sha-<commit>` | One exact commit, such as `sha-8afa8f5`. Use it to pin a deployment you intend to keep running. |
+| `<version>`, `<major>.<minor>`, `<major>` | A release, such as `0.1.0`, `0.1`, and `0`. These appear only when a `v*` git tag is pushed; none exist yet. |
+
+Every tag holds builds for `linux/amd64` and `linux/arm64`, and Docker pulls
+the one that matches your machine. The package page on GitHub lists every
+published tag.
+
+What the image expects from you:
+
+- It runs `python -m djev_sensors --config /app/config.yaml` as an
+  unprivileged user, UID 10001, and exposes no ports.
+- Mount your config file read-only at `/app/config.yaml`. The container's
+  user must be able to read it, so give it mode 644, not 600.
+- Pass the LunaRoute key, the camera URLs, and any MQTT password as
+  environment variables, under the names your config file gives.
 
 ### 2. Create a folder with three files
 
@@ -621,7 +632,9 @@ connection is down, regardless of what this service reports.
 
 ### Updating a running deployment
 
-- Prebuilt image: `docker compose pull && docker compose up -d`.
+- Prebuilt image on `latest`: `docker compose pull && docker compose up -d`.
+- Prebuilt image pinned to a `sha-` tag: change the tag in `compose.yaml`,
+  then run the same two commands.
 - Built from source: `git pull`, then `docker compose up -d --build`.
 
 `docker compose restart` restarts the existing container with its existing

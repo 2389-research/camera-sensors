@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: merge `wip/readme-animations` into `main` approved (finishing option 1): the newcomer-first README and its two animated diagrams
-- Next: none required; pushing main shows the README on GitHub (where the SVG rendering is still unseen) and rebuilds the image
+- Step: humanizer pass over README.md, docs/spec.md, and gotchas.md (records such as the plan, journal, and audit report stay as written), on `wip/humanize-docs`
+- Next: review the diffs, commit, then the finishing options
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate; the repo has no license file, and making the repo itself public would expose internal hosts and IPs in gotchas.md and the plan
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
@@ -27,6 +27,8 @@
 - Approved: "1" (2026-09-26) — finishing option 1 for `wip/docs-audit-fixes`, merge back to main locally
 - Approved: "yep. push." (2026-09-27) — merge `wip/public-image-docs` into main and push main
 - Approved: "1" (2026-09-27) — finishing option 1 for `wip/readme-animations`, merge back to main locally
+- Approved: "push please" (2026-09-27) — push main
+- Approved: "ok. let's run the humanizer skill across the docs (readme, etc)" (2026-09-27) — humanizer pass over the docs
 - Compactions: 0
 
 ## Global Constraints

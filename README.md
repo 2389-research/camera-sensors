@@ -515,8 +515,11 @@ tokens inside camera URLs. The service enforces this by refusing a literal
 `password` under `mqtt`, a literal `api_key` under `model`, or a literal
 password inside a camera URL, and exits with status 2 naming the problem.
 A `config.yaml` committed by accident or pasted into a bug report therefore
-carries no live credential; the environment is the only place that needs to
-hold a secret.
+carries no key or password; the environment is the only place that needs to
+hold one. The service cannot spot a credential elsewhere in a URL, though.
+UniFi Protect, for one, puts a stream token in the URL's path, and anyone on
+your network who has that token can watch the stream, so give such a camera
+its whole URL from a variable.
 
 A camera URL can come whole from a variable (`rtsp: ${GARAGE_RTSP_URL}`),
 or keep its password in one while the rest is written out:

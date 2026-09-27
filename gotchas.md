@@ -100,6 +100,10 @@ PyAV 18.1.0 bundles FFmpeg 8.1.2 (libavformat 62), where `tls_verify` defaults t
 
 `.private-journal/`, `docs/superpowers/`, and `docs/audits/` were tracked until commit bb5279d and now live only on disk, ignored by git. Git treats ignored files as expendable: checking out a commit from before bb5279d silently overwrites them with that commit's versions, and moving forward past bb5279d again deletes them. On 2026-09-27 a switch to the old `main` and a fast-forward merge did exactly that, and `git restore --source=bb5279d^ --worktree -- <paths>` brought the committed versions back; edits made after bb5279d would have been gone for good. Read old files with `git show <rev>:<path>`, or copy these directories somewhere safe before checking out an older commit or starting a bisect.
 
+## setup-uv has no major-version tags after v7
+
+astral-sh/setup-uv publishes floating major tags only for v1 through v7. From v8 on it tags only full versions such as `v10.2.0`, and its README pins by commit SHA. The Check workflow's first run, on 2026-09-27, died at "Set up job" with "Unable to resolve action `astral-sh/setup-uv@v10`, unable to find version `v10`", and actionlint 1.7.12 had passed the file, since it does not check that a ref exists. Pin a full version or a SHA, and before pushing a new `uses:` line, confirm its tag with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`.
+
 ## Keep private network details out of this repo
 
 The repository is meant to go public. Describe machines by role, such as "the home server", never by host name, LAN address, or SSH login. Plan docs, audit reports, and `.private-journal/` stay on disk but out of git, and `.gitignore` excludes them.

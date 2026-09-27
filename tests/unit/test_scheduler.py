@@ -1022,6 +1022,27 @@ def test_a_recheck_can_settle_an_uncertain_first_look() -> None:
     assert triggers == ["change", "recheck"]
 
 
+def test_a_recheck_restores_availability_after_a_model_failure() -> None:
+    """An owed recheck retries a failed look; it need not wait for new movement
+    (spec section 19: availability recovers on "the next successful Djev
+    evaluation", and section 11's owed rechecks are such an evaluation)."""
+    h = make_harness(
+        {"couch": sensor(PORCH, recheck_count=1)},
+        {PORCH: [ModelError("LunaRoute timed out"), judgment(0.5)]},
+    )
+    h.scheduler.camera_status("yard", True)
+    h.publisher.calls.clear()
+
+    run(samples(h, [(0, 3.0), (10, 0.0)]))
+
+    assert h.publisher.values("availability", "couch") == [False, True]
+    triggers = [
+        attributes["trigger"]  # type: ignore[index]
+        for attributes in h.publisher.values("attributes", "couch")
+    ]
+    assert triggers == ["recheck"]
+
+
 def test_each_recheck_is_logged_with_the_rechecks_left(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

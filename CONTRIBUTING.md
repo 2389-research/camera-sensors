@@ -26,4 +26,6 @@ test that shows the change, keep the README and `docs/spec.md` true to the
 code, and open a pull request once `scripts/check` ends with
 `All checks passed.`
 
+[BACKLOG.md](BACKLOG.md) lists known gaps that are open to anyone.
+
 The project asks for no contributor license agreement and no sign-off.

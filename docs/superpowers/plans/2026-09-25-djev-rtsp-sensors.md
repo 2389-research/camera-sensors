@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: README describes pulling the public image; merging `wip/public-image-docs` into main and pushing, which runs the image workflow for the first time
-- Next: watch the first image build; after Doctor Biz makes the package public, verify an anonymous pull of both architectures
+- Step: README reordered for newcomers (what this is, getting started, how it works, System One) with two animated SVG diagrams made with the igor/diagramming skill (masters in docs/diagrams, portable exports in docs/images), on `wip/readme-animations`
+- Next: Doctor Biz picks a finishing option; GitHub's rendering of the SVGs is untested until pushed (fallback fonts checked locally)
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate; the repo has no license file, and making the repo itself public would expose internal hosts and IPs in gotchas.md and the plan
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img">
+  <title>How it works: from a camera sample to a Home Assistant sensor</title>
+  <desc>960 by 540 scene, 10 seconds, one shot. Four boxes sit on one row: Camera, Change check, Djev, Home Assistant. Arrows point from each box to the next; the corridor labels read "sample", "frame + question" and "MQTT". Under the boxes: the camera is an RTSP stream sampled once a second; the change check compares each sample with the one before and asks only at 2.5% or more; Djev is a System One model reached via LunaRoute; the Home Assistant entity is binary_sensor.car_in_garage. A first sample travels from Camera to Change check and stops there; the check reads "0.3% changed" with the note "under 2.5%: nothing sent", then both clear. A second sample travels the same way; the check reads "3.2% changed". A frame travels from Change check to Djev; Djev shows "yes: 0.93" on a pale blue area with the question "Is a car parked in the garage?" beneath. An answer travels from Djev to Home Assistant over MQTT; the state chip changes from a dashed "unknown" to a pale blue "ON" and the rule "0.93 is at least 0.80, so ON" appears. The scene then holds. Caption: Cheap pixel math decides when to ask. Djev decides what the change means. Base markup is the complete final state.</desc>
+  <style>
+    .title { font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; font-size: 24px; fill: #17212B; }
+    .label { font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; font-size: 20px; fill: #17212B; }
+    .note { font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; font-size: 14px; fill: #4B5563; }
+    .caption { font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; font-size: 18px; fill: #17212B; }
+    .mono { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 14px; fill: #4B5563; }
+    .value { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 14px; fill: #17212B; }
+    .box { fill: #FFFFFF; stroke: #6B7280; stroke-width: 2; }
+    .route { stroke: #6B7280; stroke-width: 2; }
+    .head { fill: #6B7280; }
+    .mark { stroke: #6B7280; stroke-width: 2; fill: none; }
+    .token { fill: #DBEAFE; stroke: #17212B; stroke-width: 2; }
+    .emphasis { fill: #DBEAFE; }
+    .slot { fill: none; stroke: #6B7280; stroke-width: 2; stroke-dasharray: 4 4; }
+  </style>
+
+  <!-- ground: first painted element covers the viewBox -->
+  <rect x="0" y="0" width="960" height="540" fill="#FFFFFF"/>
+
+  <text class="title" x="16" y="48">How it works</text>
+
+  <!-- reading axis y=216; boxes 120..312 -->
+
+  <!-- 1. Camera -->
+  <rect class="box" x="16" y="120" width="112" height="192"/>
+  <text class="label" x="32" y="152">Camera</text>
+  <circle class="mark" cx="72" cy="240" r="18"/>
+  <circle cx="72" cy="240" r="6" fill="#6B7280"/>
+  <text class="mono" x="16" y="344">RTSP stream</text>
+  <text class="mono" x="16" y="364">sampled once a second</text>
+
+  <!-- corridor 1: Camera to Change check -->
+  <line class="route" x1="128" y1="216" x2="204" y2="216"/>
+  <path class="head" d="M 204 208 L 216 216 L 204 224 Z"/>
+  <text class="mono" x="172" y="198" text-anchor="middle">sample</text>
+
+  <!-- 2. Change check -->
+  <rect class="box" x="216" y="120" width="176" height="192"/>
+  <text class="label" x="232" y="152">Change check</text>
+  <!-- first reading: visible only while sample A sits at the check -->
+  <text class="value" x="232" y="221" opacity="0">0.3% changed
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.10;0.13;0.21;0.24;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </text>
+  <g opacity="0">
+    <text class="note" x="232" y="252">under 2.5%:</text>
+    <text class="note" x="232" y="272">nothing sent</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.10;0.13;0.21;0.24;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- second reading: the settled state -->
+  <text class="value" x="232" y="221" opacity="1">3.2% changed
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.33;0.36;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </text>
+  <text class="note" x="216" y="344">compares each sample</text>
+  <text class="note" x="216" y="364">with the one before</text>
+  <text class="note" x="216" y="384">asks only at 2.5% or more</text>
+
+  <!-- corridor 2: Change check to Djev -->
+  <line class="route" x1="392" y1="216" x2="468" y2="216"/>
+  <path class="head" d="M 468 208 L 480 216 L 468 224 Z"/>
+  <text class="mono" x="436" y="180" text-anchor="middle">frame +</text>
+  <text class="mono" x="436" y="198" text-anchor="middle">question</text>
+
+  <!-- 3. Djev -->
+  <rect class="box" x="480" y="120" width="152" height="192"/>
+  <text class="label" x="496" y="152">Djev</text>
+  <g opacity="1">
+    <rect class="emphasis" x="496" y="200" width="92" height="32"/>
+    <text class="value" x="504" y="221">yes: 0.93</text>
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.50;0.55;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <text class="note" x="496" y="252">"Is a car parked</text>
+  <text class="note" x="496" y="272">in the garage?"</text>
+  <text class="mono" x="480" y="344">System One model</text>
+  <text class="mono" x="480" y="364">via LunaRoute</text>
+
+  <!-- corridor 3: Djev to Home Assistant -->
+  <line class="route" x1="632" y1="216" x2="692" y2="216"/>
+  <path class="head" d="M 692 208 L 704 216 L 692 224 Z"/>
+  <text class="mono" x="668" y="198" text-anchor="middle">MQTT</text>
+
+  <!-- 4. Home Assistant -->
+  <rect class="box" x="704" y="120" width="240" height="192"/>
+  <text class="label" x="720" y="152">Home Assistant</text>
+  <!-- state chip before the answer: unknown -->
+  <g opacity="0">
+    <rect class="slot" x="720" y="200" width="76" height="32"/>
+    <text class="mono" x="728" y="221">unknown</text>
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.66;0.71;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- state chip after the answer: ON -->
+  <g opacity="1">
+    <rect class="emphasis" x="720" y="200" width="36" height="32"/>
+    <text class="value" x="728" y="221">ON</text>
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.66;0.71;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <text class="note" x="720" y="252" opacity="1">0.93 is at least 0.80, so ON
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.68;0.73;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </text>
+  <text class="mono" x="704" y="344">binary_sensor.car_in_garage</text>
+
+  <!-- caption -->
+  <text class="caption" x="16" y="464">Cheap pixel math decides when to ask. Djev decides what the change means.</text>
+
+  <!-- moving tokens: base markup parks each at its destination edge, faded -->
+  <!-- sample A: Camera to Change check, 0.1 to 1.0 s; fades at the check -->
+  <g transform="translate(204 216)" opacity="0">
+    <rect class="token" x="-10" y="-7" width="20" height="14"/>
+    <animateMotion path="M -94 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.01;0.10;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.01;0.10;0.13;1" calcMode="spline" keySplines="0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- sample B: Camera to Change check, 2.4 to 3.3 s -->
+  <g transform="translate(204 216)" opacity="0">
+    <rect class="token" x="-10" y="-7" width="20" height="14"/>
+    <animateMotion path="M -94 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.24;0.33;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.23;0.24;0.33;0.36;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- frame + question: Change check to Djev, 3.8 to 4.9 s -->
+  <g transform="translate(468 216)" opacity="0">
+    <rect class="token" x="-10" y="-7" width="20" height="14"/>
+    <animateMotion path="M -94 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.38;0.49;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.37;0.38;0.49;0.52;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- answer: Djev to Home Assistant over MQTT, 5.7 to 6.6 s -->
+  <g transform="translate(692 216)" opacity="0">
+    <rect class="token" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M -76 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.57;0.66;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.57;0.66;0.69;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+</svg>

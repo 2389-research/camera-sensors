@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img">
+  <title>How a System One model works: a state and typed questions go in, typed answers come out, your code decides</title>
+  <desc>960 by 540 scene, 10 seconds, one-shot. Left column: a "State" document holding an example customer message ("Hi, I was charged twice this month. Please refund one of the charges.", metadata "text or JSON") above a "Questions" frame with three typed questions: noul "Does this message request a refund?", choice "Which team should handle this ticket?" (billing, engineering, support), score "How frustrated is this customer?". Center: a "System One model" box ("fast, calibrated, no generated text"). Right column: a "Typed answers" box with three slots above a "Your code decides" box. A straight arrow leads from the State into the model and a bent arrow from the Questions into the model; three parallel arrows lead from the model into the answers box; one arrow leads down from the answers box into the code box. Timeline: 0.4 to 1.6 s a chip travels from the State into the model; 0.8 to 2.4 s a chip travels from the Questions into the model; 2.8 to 3.4 s a slot in the model fills with the emphasis color and reads "answered together"; 3.6 to 4.8 s three chips leave the model's right edge, one per row, and stop at the answers box, and by 5.4 s the three slots fill and read noul: 0.95, choice: "billing", score: 1.4; 5.8 to 6.8 s three chips travel down from the answers box into the code box; 6.8 to 7.4 s two decision slots fill with the emphasis color and read "0.95 is at least 0.9, so start a refund" and "route to the billing team"; the scene then holds until 10 s. Caption: "Typed answers and probabilities, not prose. Your code turns them into actions." The message, values and rules are examples. Base markup is the complete final state; animation starts on document load and does not loop.</desc>
+  <style>
+    .sans { font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; }
+    .mono { font-family: "IBM Plex Mono", Menlo, Consolas, monospace; }
+    .title { font-size: 24px; fill: #17212B; }
+    .label { font-size: 20px; fill: #17212B; }
+    .body { font-size: 17px; fill: #17212B; }
+    .meta { font-size: 14px; fill: #4B5563; }
+    .caption { font-size: 17px; fill: #4B5563; }
+    .frame { fill: #FFFFFF; stroke: #6B7280; stroke-width: 2; }
+    .route { fill: none; stroke: #6B7280; stroke-width: 2; }
+    .head { fill: #6B7280; }
+    .slot-empty { fill: none; stroke: #6B7280; stroke-width: 2; stroke-dasharray: 4 4; }
+    .slot-filled { fill: #DBEAFE; }
+    .chip { fill: #DBEAFE; stroke: #17212B; stroke-width: 2; }
+  </style>
+  <!-- ground: first painted element covers the viewBox -->
+  <rect x="0" y="0" width="960" height="540" fill="#FFFFFF"/>
+  <!-- heading and example note -->
+  <text class="sans title" x="24" y="40">How a System One model works</text>
+  <text class="sans meta" x="24" y="64">The message, values and rules are examples.</text>
+
+  <!-- State: the input document -->
+  <rect class="frame" x="24" y="80" width="328" height="104"/>
+  <text class="sans label" x="40" y="108">State</text>
+  <text class="mono meta" x="336" y="108" text-anchor="end">text or JSON</text>
+  <text class="sans body" x="40" y="142">Hi, I was charged twice this month.</text>
+  <text class="sans body" x="40" y="166">Please refund one of the charges.</text>
+
+  <!-- Questions: three typed questions -->
+  <rect class="frame" x="24" y="208" width="328" height="240"/>
+  <text class="sans label" x="40" y="236">Questions</text>
+  <text class="mono meta" x="40" y="266">noul (the probability of yes)</text>
+  <text class="sans body" x="40" y="290">Does this message request a refund?</text>
+  <text class="mono meta" x="40" y="322">choice</text>
+  <text class="sans body" x="40" y="346">Which team should handle this ticket?</text>
+  <text class="mono meta" x="40" y="368">billing, engineering, support</text>
+  <text class="mono meta" x="40" y="400">score</text>
+  <text class="sans body" x="40" y="424">How frustrated is this customer?</text>
+
+  <!-- routes into the model: straight from the State, bent from the Questions -->
+  <line class="route" x1="352" y1="132" x2="404" y2="132"/>
+  <path class="head" d="M 404 124 L 416 132 L 404 140 Z"/>
+  <path class="route" d="M 352 328 L 384 328 L 384 228 L 404 228"/>
+  <path class="head" d="M 404 220 L 416 228 L 404 236 Z"/>
+
+  <!-- System One model -->
+  <rect class="frame" x="416" y="104" width="208" height="152"/>
+  <text class="sans label" x="432" y="136">System One model</text>
+  <text class="sans meta" x="432" y="160">fast, calibrated,</text>
+  <text class="sans meta" x="432" y="178">no generated text</text>
+  <!-- durable change: the questions are answered together, in one pass -->
+  <rect class="slot-empty" x="432" y="204" width="160" height="32" opacity="0">
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.28;0.34;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <rect class="slot-filled" x="432" y="204" width="160" height="32" opacity="1">
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.28;0.34;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <text class="sans body" x="440" y="226" opacity="1">answered together<animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.28;0.34;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/></text>
+
+  <!-- routes out of the model: three answers in parallel -->
+  <line class="route" x1="624" y1="140" x2="676" y2="140"/>
+  <path class="head" d="M 676 132 L 688 140 L 676 148 Z"/>
+  <line class="route" x1="624" y1="180" x2="676" y2="180"/>
+  <path class="head" d="M 676 172 L 688 180 L 676 188 Z"/>
+  <line class="route" x1="624" y1="220" x2="676" y2="220"/>
+  <path class="head" d="M 676 212 L 688 220 L 676 228 Z"/>
+
+  <!-- Typed answers -->
+  <rect class="frame" x="688" y="80" width="248" height="176"/>
+  <text class="sans label" x="704" y="108">Typed answers</text>
+  <!-- noul slot -->
+  <rect class="slot-empty" x="704" y="124" width="216" height="32" opacity="0">
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.44;0.50;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <rect class="slot-filled" x="704" y="124" width="216" height="32" opacity="1">
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.44;0.50;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <text class="mono body" x="712" y="146" opacity="1">noul: 0.95<animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.44;0.50;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/></text>
+  <!-- choice slot -->
+  <rect class="slot-empty" x="704" y="164" width="216" height="32" opacity="0">
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.46;0.52;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <rect class="slot-filled" x="704" y="164" width="216" height="32" opacity="1">
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.46;0.52;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <text class="mono body" x="712" y="186" opacity="1">choice: "billing"<animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.46;0.52;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/></text>
+  <!-- score slot -->
+  <rect class="slot-empty" x="704" y="204" width="216" height="32" opacity="0">
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.48;0.54;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <rect class="slot-filled" x="704" y="204" width="216" height="32" opacity="1">
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.48;0.54;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <text class="mono body" x="712" y="226" opacity="1">score: 1.4<animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.48;0.54;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/></text>
+
+  <!-- route from the answers down into your code -->
+  <line class="route" x1="812" y1="256" x2="812" y2="332"/>
+  <path class="head" d="M 804 332 L 812 344 L 820 332 Z"/>
+
+  <!-- Your code decides: two example rules, each in its own decision slot -->
+  <rect class="frame" x="688" y="344" width="248" height="144"/>
+  <text class="sans label" x="704" y="372">Your code decides</text>
+  <rect class="slot-empty" x="704" y="388" width="216" height="48" opacity="0">
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.68;0.74;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <rect class="slot-filled" x="704" y="388" width="216" height="48" opacity="1">
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.68;0.74;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <rect class="slot-empty" x="704" y="444" width="216" height="32" opacity="0">
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.68;0.74;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <rect class="slot-filled" x="704" y="444" width="216" height="32" opacity="1">
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.68;0.74;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </rect>
+  <g opacity="1">
+    <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.68;0.74;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <text class="sans body" x="712" y="409">0.95 is at least 0.9,</text>
+    <text class="sans body" x="712" y="430">so start a refund</text>
+    <text class="sans body" x="712" y="466">route to the billing team</text>
+  </g>
+
+  <!-- caption -->
+  <text class="sans caption" x="24" y="520">Typed answers and probabilities, not prose. Your code turns them into actions.</text>
+
+  <!-- moving fragments: base markup is each one's final state, parked at its destination edge and faded -->
+  <!-- the State travels into the model -->
+  <g id="chip-state" transform="translate(408 132)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M -56 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.04;0.16;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.16;0.20;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- the Questions travel into the model along the bent route -->
+  <g id="chip-questions" transform="translate(408 228)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M -56 100 L -24 100 L -24 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.08;0.24;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.24;0.28;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- three answers leave the model together, one per row -->
+  <g id="chip-noul" transform="translate(680 140)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M -56 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.36;0.44;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.34;0.36;0.44;0.48;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <g id="chip-choice" transform="translate(680 180)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M -56 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.38;0.46;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.36;0.38;0.46;0.50;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <g id="chip-score" transform="translate(680 220)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M -56 0 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.40;0.48;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.38;0.40;0.48;0.52;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <!-- the three answers travel down into your code -->
+  <g id="chip-code-1" transform="translate(788 336)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M 0 -80 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.58;0.68;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.58;0.68;0.72;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <g id="chip-code-2" transform="translate(812 336)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M 0 -80 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.58;0.68;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.58;0.68;0.72;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+  <g id="chip-code-3" transform="translate(836 336)" opacity="0">
+    <rect class="chip" x="-8" y="-8" width="16" height="16"/>
+    <animateMotion path="M 0 -80 L 0 0" keyPoints="0;0;1;1" keyTimes="0;0.58;0.68;1" calcMode="spline" keySplines="0 0 1 1; 0.42 0 0.16 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.58;0.68;0.72;1" calcMode="spline" keySplines="0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1; 0.22 0.9 0.3 1; 0 0 1 1" dur="10s" begin="0s" fill="freeze"/>
+  </g>
+</svg>

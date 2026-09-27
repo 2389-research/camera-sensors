@@ -1,66 +1,77 @@
 # djev-sensors
 
-djev-sensors turns RTSP camera streams into Home Assistant binary sensors.
-Each sensor asks Djev one yes-or-no question about what a camera sees, such
-as "Is a car parked inside the garage?". The Djev model answers it through
-LunaRoute, and the answer reaches Home Assistant over MQTT Discovery: no
-Home Assistant YAML to write.
+## What this is
 
-A camera that never changes costs nothing: the service makes no model
-request until something moves in its frame, and even then it asks Djev at
+djev-sensors watches your cameras and turns yes-or-no questions about what
+they see into Home Assistant sensors. You write a question such as "Is a car
+parked inside the garage?" in a small config file. Whenever that camera's
+picture changes, the service asks a vision model your question, and the
+answer shows up in Home Assistant as a binary sensor that is `ON` or `OFF`.
+There is no Home Assistant YAML to write.
+
+<img src="docs/images/how-it-works.svg" width="900" alt="Animated diagram of the pipeline. A camera sends a sample frame. A cheap change check compares it with the previous frame and asks only when at least 2.5 percent of the pixels changed. The frame and the question 'Is a car parked in the garage?' go to Djev through LunaRoute. A probability of 0.93 comes back, and the Home Assistant sensor turns ON.">
+
+Some terms this README uses, in case they are new:
+
+- **RTSP** is the protocol most network cameras use to serve live video. A
+  camera's RTSP URL is the address of its stream, and it often carries a user
+  name and password.
+- **Home Assistant** is the open-source home automation platform. A **binary
+  sensor** is one of its entity types: something that is on or off, such as a
+  gate that is open or a car that is home.
+- **MQTT** is a small messaging protocol. Programs publish messages to a
+  **broker**, such as Mosquitto, and other programs subscribe to them. Home
+  Assistant's MQTT integration can create entities on its own from messages a
+  service publishes. That feature is **MQTT Discovery**, and it is why these
+  sensors need no configuration on the Home Assistant side.
+- **Djev** is the model that answers the questions. It is a System One model:
+  instead of writing text, it returns the probability that the answer is yes.
+  [How System One models work](#how-system-one-models-work) explains what
+  that means.
+- **LunaRoute** is the hosted API gateway this service calls to reach Djev.
+  You need a LunaRoute API key to run it.
+
+A camera that never changes costs no model calls: the service makes no
+model request until something moves in its frame, and even then it asks Djev at
 most once per sensor per cooldown, plus a few slow rechecks while the scene
-settles. See [How it works](#how-it-works) for the exact cost.
+settles. [How does it work?](#how-does-it-work) has the exact cost.
+
+The repository and the container image are named `camera-sensors`. The
+service itself is `djev-sensors`, and its Python package is `djev_sensors`.
 
 ## Contents
 
-- [How it works](#how-it-works)
-- [Quick start with the prebuilt image](#quick-start-with-the-prebuilt-image)
+- [What this is](#what-this-is)
+- [Getting started](#getting-started)
+- [How does it work?](#how-does-it-work)
+- [How System One models work](#how-system-one-models-work)
 - [Running from a clone and building from source](#running-from-a-clone-and-building-from-source)
 - [Configuration reference](#configuration-reference)
 - [How sensors decide](#how-sensors-decide)
 - [Home Assistant](#home-assistant)
 - [Deploying, updating, and changing sensors](#deploying-updating-and-changing-sensors)
 - [Operating](#operating)
-- [Development](#development)
+- [Contributing](#contributing)
 
-## How it works
+## Getting started
 
-1. The service decodes each distinct RTSP URL once, however many sensors
-   watch it, and samples each camera at its configured frame rate.
-2. It scores each sample against the one before it: the percent of pixels
-   that changed in a small grayscale copy.
-3. A sensor triggers when that score reaches its `change_threshold_pct`, its
-   cooldown has passed, and it has no request in flight. After that movement
-   it rechecks the newest frame a few more times, slowly, so a scene that
-   settles still gets judged.
-4. The service sends the sensor's question and a JPEG of the frame to Djev
-   through LunaRoute, and gets back the probability that the answer is yes.
-   The JPEG is the frame at full resolution when that fits LunaRoute's byte
-   budget, and shrunk when it does not, which is usual for HD and 4K
-   cameras. See [How sensors decide](#how-sensors-decide) for the details.
-5. A high probability publishes `ON`, a low one `OFF`, and one in between
-   keeps the current state.
-
-A camera that never changes sends nothing to the model, and the service makes
-no request at startup. Movement that settles within the cooldown costs at most
-one request plus `recheck_count` rechecks per sensor, spaced by the cooldown
-or the recheck interval, whichever is longer. Movement that lasts longer
-starts another request each time the cooldown expires.
-
-## Quick start with the prebuilt image
-
-Every push to `main` publishes `ghcr.io/2389-research/camera-sensors:latest`
-for `linux/amd64` and `linux/arm64`. This is the fastest way to run the
-service without cloning the repository or building anything.
+The quickest route is the prebuilt image: every push to `main` publishes
+`ghcr.io/2389-research/camera-sensors:latest` for `linux/amd64` and
+`linux/arm64`, so there is nothing to clone or build. To build it yourself
+instead, see
+[Running from a clone and building from source](#running-from-a-clone-and-building-from-source).
 
 You need:
 
 - Docker with Compose (Docker Desktop, or the Docker Engine plus the
-  `docker compose` plugin);
-- an MQTT broker reachable from wherever the container runs, such as the
-  Mosquitto add-on in Home Assistant or a standalone Mosquitto;
-- a LunaRoute API key (looks like `lr_...`);
-- the RTSP URL of each camera you want to watch.
+  `docker compose` plugin). Compose starts the container from a short
+  `compose.yaml` file.
+- An MQTT broker that Home Assistant and the container can both reach, such
+  as the Mosquitto add-on in Home Assistant or a standalone Mosquitto.
+- Home Assistant with the MQTT integration set up for that broker and
+  discovery on.
+- A LunaRoute API key. It looks like `lr_...`.
+- The RTSP URL of each camera you want to watch.
 
 ### 1. Pull the image
 
@@ -70,15 +81,9 @@ The image is public, so no login is needed:
 docker pull ghcr.io/2389-research/camera-sensors:latest
 ```
 
-| Tag | Points at |
-|---|---|
-| `latest` | The newest commit on `main`. It moves with every merge. |
-| `sha-<commit>` | One exact commit, such as `sha-8afa8f5`. Use it to pin a deployment you intend to keep running. |
-| `<version>`, `<major>.<minor>`, `<major>` | A release, such as `0.1.0`, `0.1`, and `0`. These appear only when a `v*` git tag is pushed; none exist yet. |
-
-Every tag holds builds for `linux/amd64` and `linux/arm64`, and Docker pulls
-the one that matches your machine. The package page on GitHub lists every
-published tag.
+`latest` follows the newest commit on `main` and moves with every merge. To
+pin a deployment to one exact build, use a `sha-<commit>` tag instead;
+[Image tags](#image-tags) lists the options.
 
 What the image expects from you:
 
@@ -161,7 +166,7 @@ docker compose up -d
 docker compose logs -f djev-sensors
 ```
 
-### Confirm it works
+### 4. Confirm it works
 
 Watch the logs. In a working startup, these lines appear in this order:
 
@@ -192,11 +197,100 @@ camera has connected, `online` for `djev-sensors/car_in_garage/availability`.
 Both stay open after printing the retained messages; press Ctrl-C once
 you have seen them.
 
-In Home Assistant, with the MQTT integration configured and discovery on,
-open Settings > Devices & services > MQTT and find the "Djev Vision
-Sensors" device. The sensor appears as `binary_sensor.car_in_garage`, shown
-as unavailable until its camera connects, then unknown until Djev's first
-confident judgment.
+In Home Assistant, open Settings > Devices & services > MQTT and find the
+"Djev Vision Sensors" device. The sensor appears as
+`binary_sensor.car_in_garage`, shown as unavailable until its camera
+connects, then unknown until Djev's first confident judgment.
+
+From here, [Configuration reference](#configuration-reference) lists every
+key, [Writing good prompts](#writing-good-prompts) helps with the questions,
+and [Adding, renaming, and removing sensors](#adding-renaming-and-removing-sensors)
+covers growing the setup.
+
+## How does it work?
+
+The path one frame takes:
+
+1. The service decodes each distinct RTSP URL once, however many sensors
+   watch it, and samples each camera at its configured frame rate.
+2. It scores each sample against the one before it: the percent of pixels
+   that changed in a small grayscale copy.
+3. A sensor triggers when that score reaches its `change_threshold_pct`, its
+   cooldown has passed, and it has no request in flight. After that movement
+   it rechecks the newest frame a few more times, slowly, so a scene that
+   settles still gets judged.
+4. The service sends the sensor's question and a JPEG of the frame to Djev
+   through LunaRoute, and gets back the probability that the answer is yes.
+   The JPEG is the frame at full resolution when that fits LunaRoute's byte
+   budget, and shrunk when it does not, which is usual for HD and 4K
+   cameras. See [How sensors decide](#how-sensors-decide) for the details.
+5. A high probability publishes `ON`, a low one `OFF`, and one in between
+   keeps the current state.
+
+A camera that never changes sends nothing to the model, and the service makes
+no request at startup. Movement that settles within the cooldown costs at most
+one request plus `recheck_count` rechecks per sensor, spaced by the cooldown
+or the recheck interval, whichever is longer. Movement that lasts longer
+starts another request each time the cooldown expires.
+
+## How System One models work
+
+<img src="docs/images/system-one.svg" width="900" alt="Animated diagram of a System One model. It reads a text state and answers typed questions: a Noul question returns the probability of yes, a Choice question returns one option from a defined set, and a Score question returns a position on ordered levels. The answers are typed values and probabilities instead of prose, and your code turns them into actions.">
+
+Most AI models you have met write prose. Djev does not. It is a System One
+model, and
+[TypeSafe's System One documentation](https://docs.typesafe.ai/concepts/system-one),
+which describes this class of model, puts it plainly: "System One models
+make fast, structured decisions for software." "A System One model
+evaluates a state and returns typed answers and probabilities." They "do
+not write replies, produce code, or generate explanations of their
+reasoning."
+
+Two ideas carry the whole thing:
+
+- The **state** is the input. TypeSafe's docs describe it as text: a string,
+  a JSON object, or a list of strings, such as a support ticket with its
+  account details.
+- A **question** asks for a typed answer about that state. There are three
+  kinds, called primitives. The examples are TypeSafe's own:
+
+| Primitive | What you ask | What comes back |
+|---|---|---|
+| Choice | Pick one option from a set you define, such as which team should handle a ticket. | One option from that set, such as `billing`. |
+| Score | Place the state on ordered levels you define, such as how frustrated a customer is, from 0 (calm) to 2 (very frustrated). | A position on that scale, such as `1.4`. |
+| Noul | A yes-or-no question, such as "Does this message request a refund?". | The probability of yes, such as `0.95`. |
+
+Because each answer is a value rather than a sentence, code can act on it
+directly: compare the probability with a threshold, branch on the choice,
+sort by the score. System One models are also "trained for calibrated
+decisions": their probabilities are tuned against real outcomes to reflect
+uncertainty, so a 0.9 should come true far more often than a 0.6. TypeSafe
+notes that calibration is measured across groups of predictions and does
+not guarantee that any one answer is right. This service treats each answer
+that way: a confident probability flips the sensor, a middling one does not.
+
+### How this service uses it
+
+Every sensor is one Noul question. For each look, the service sends
+LunaRoute one request with an empty state and a single question named
+`result`. Its `type` is `noul`, and its `instructions` carry two things: the
+text, which is the `prompt_wrapper` followed by the sensor's prompt, and the
+camera frame as a JPEG data URL. LunaRoute answers with
+`answers.result.noul`, the probability that the answer is yes, and
+[From a probability to a state](#from-a-probability-to-a-state) turns that
+number into `ON`, `OFF`, or no change.
+
+TypeSafe's docs describe System One input as text, and this service sends a
+picture. That works because LunaRoute's `djev` endpoint accepts an image
+inside a question's instructions. The route is specific to LunaRoute, and it
+was verified against the live gateway on 2026-09-24 and 25, in the same
+probes that measured the byte budget in [What Djev sees](#what-djev-sees).
+Other System One models, and other gateways, may take text only.
+
+To see typed answers with your own eyes, run the repository's `test.sh` with
+a key in `LUNAROUTE_API_KEY`. It needs `curl` and `python3`. It sends
+LunaRoute a text-only state, a sample support ticket, with one Noul, two
+Choice, and one Score question, and prints the reply.
 
 ## Running from a clone and building from source
 
@@ -205,6 +299,8 @@ confident judgment.
 1. Clone the repository and copy the example config:
 
    ```sh
+   git clone https://github.com/2389-research/camera-sensors.git
+   cd camera-sensors
    cp config.example.yaml config.yaml
    ```
 
@@ -447,15 +543,16 @@ A few practices make sensors more reliable:
 ### Sampling and the change score
 
 Each camera decodes continuously but is only sampled at its configured
-`fps` (once a second by default). Every sampled frame is reduced to a small
-grayscale copy: converted to grayscale, resized to `change_detection.width`
-pixels wide (aspect ratio kept), and, unless `blur` is 0, smoothed with a
-Gaussian blur. That copy is compared, pixel by pixel, against the same
-reduction of the previous sampled frame, whether or not that previous frame
-triggered a sensor: a pixel counts as changed when it moves by at least
-`pixel_delta_threshold`, and the change score is the percentage of pixels
-that changed. The first sample after startup or a reconnect has nothing to
-compare against, so it only becomes the new baseline.
+`fps` (once a second unless you change it). Every sampled frame is reduced
+to a small grayscale copy: converted to grayscale, resized to
+`change_detection.width` pixels wide (aspect ratio kept), and, unless `blur`
+is 0, smoothed with a Gaussian blur. That copy is compared, pixel by pixel,
+against the same reduction of the previous sampled frame, whether or not
+that previous frame triggered a sensor: a pixel counts as changed when it
+moves by at least `pixel_delta_threshold`, and the change score is the
+percentage of pixels that changed. The first sample after startup or a
+reconnect has nothing to compare against, so it only becomes the new
+baseline.
 
 ### Triggering a look
 
@@ -630,6 +727,18 @@ connection is down, regardless of what this service reports.
 
 ## Deploying, updating, and changing sensors
 
+### Image tags
+
+| Tag | Points at |
+|---|---|
+| `latest` | The newest commit on `main`. It moves with every merge. |
+| `sha-<commit>` | One exact commit, such as `sha-8afa8f5`. Use it to pin a deployment you intend to keep running. |
+| `<version>`, `<major>.<minor>`, `<major>` | A release, such as `0.1.0`, `0.1`, and `0`. These appear only when a `v*` git tag is pushed; none exist yet. |
+
+Every tag holds builds for `linux/amd64` and `linux/arm64`, and Docker pulls
+the one that matches your machine. The package page on GitHub lists every
+published tag.
+
 ### Updating a running deployment
 
 - Prebuilt image on `latest`: `docker compose pull && docker compose up -d`.
@@ -729,7 +838,7 @@ stderr, not as JSON.
 
 `errno` appears only when the failing exception carries an integer one.
 
-Count events to get the spec's metrics:
+Count events to get the metrics [the spec](docs/spec.md) asks for:
 
 | Metric | From |
 |---|---|
@@ -817,21 +926,52 @@ so logs cannot supply them.
   the container's user, UID 10001, cannot read the file. Run
   `chmod 644 config.yaml`.
 
-## Development
+## Contributing
+
+Bug reports, questions, and pull requests are all welcome. If you are not
+sure whether a change fits, open an issue first and describe the problem.
+
+### Set up
+
+You need uv, Docker running, and FFmpeg on `PATH` (the RTSP tests publish
+with it). Then:
+
+```sh
+git clone https://github.com/2389-research/camera-sensors.git
+cd camera-sensors
+uv sync
+```
+
+### Where things live
+
+| Path | What it holds |
+|---|---|
+| `djev_sensors/` | The service. `__main__.py` is the command line, `app.py` the service loop, `camera.py` the shared RTSP decoding, `detectors/` the change scoring, `scheduler.py` which sensors look and what each outcome publishes, `models/` the LunaRoute client, `state.py` the probability band, and `mqtt/` discovery and publishing. |
+| `tests/unit/` | Tests of one module at a time: config, sampling, change detection, the scheduler, the state band, request fitting, discovery payloads, log events, and the end-to-end harness's cleanup. |
+| `tests/integration/` | Tests against real MediaMTX and Mosquitto containers, the whole pipeline fed scripted frames, a local HTTP stand-in for LunaRoute, the command line, and `test.sh`. |
+| `tests/e2e/` | Tests that build the image, drive a fresh Home Assistant, and probe the live LunaRoute gateway. |
+| `docs/spec.md` | The design spec. Code comments cite its sections, as in "spec section 14". |
+| `gotchas.md` | Facts learned the hard way about the libraries, the gateway, and the Docker engines this has run on. Read it before touching those parts. |
+| `config.example.yaml` | The example config. This README's copy must stay identical to it. |
+| `test.sh` | The text-only LunaRoute smoke script. |
+
+### Run the checks
 
 `scripts/check` runs `ruff check`, `ruff format --check`, strict mypy over
 `djev_sensors`, and the unit and integration tests. `scripts/check --live`
 runs all of that, then the end-to-end tests in `tests/e2e`.
 
-Prerequisites for both: uv, Docker running, and FFmpeg on `PATH` (the RTSP
-tests publish with it). The integration tests bring up MediaMTX and
-Mosquitto with `docker compose` on 127.0.0.1:18554 and 18883, which must be
-free, pulling `bluenviron/mediamtx:1` and `eclipse-mosquitto:2` the first
-time they run; a plain `scripts/check` needs registry access for that, not
-just `--live`. The repository also needs to sit in a directory the Docker
-engine shares with containers, since the test stacks mount files from it;
-Colima, for example, shares only your home directory by default. `--live`
-also needs:
+```sh
+scripts/check
+```
+
+The integration tests bring up MediaMTX and Mosquitto with `docker compose`
+on 127.0.0.1:18554 and 18883, which must be free, pulling
+`bluenviron/mediamtx:1` and `eclipse-mosquitto:2` the first time they run; a
+plain `scripts/check` needs registry access for that, not just `--live`. The
+repository also needs to sit in a directory the Docker engine shares with
+containers, since the test stacks mount files from it; Colima, for example,
+shares only your home directory by default. `--live` also needs:
 
 - a LunaRoute API key in `LUNAROUTE_API_KEY`; the live tests fail, not
   skip, without one;
@@ -859,3 +999,18 @@ The script prints `==> <step>` before each step. It exits 0 after printing
 `All checks passed.`, stops with status 1 at the first failing step after
 printing `FAILED: <step> (command: ...)`, and exits 2 with a usage line for
 any other argument.
+
+### Propose a change
+
+1. Fork the repository and make your change on a branch.
+2. Add or update a test that shows the change. If the change alters
+   behavior this README or `docs/spec.md` describes, update them in the
+   same pull request; the README has been checked against the code, claim
+   by claim, and should stay that way.
+3. Run `scripts/check` and make sure it ends with `All checks passed.`.
+4. Open a pull request that says what changed and why. The repository's
+   GitHub workflow builds the Docker image for both platforms on every pull
+   request; it does not publish from one.
+
+Never put a key, a broker password, or a camera URL in a commit, a test, or
+an issue. Git ignores `.env` and `config.yaml` for that reason.

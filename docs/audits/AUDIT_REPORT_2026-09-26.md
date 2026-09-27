@@ -160,3 +160,60 @@ Added `.github/workflows/docker-image.yml` (new file, not present before). Build
 - Actions and pinned majors, looked up with `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name` on 2026-09-26 rather than guessed: `actions/checkout@v7` (v7.0.1), `docker/setup-qemu-action@v4` (v4.4.0), `docker/setup-buildx-action@v4` (v4.4.1), `docker/login-action@v4` (v4.6.0), `docker/metadata-action@v6` (v6.2.0), `docker/build-push-action@v7` (v7.4.0).
 - Validated with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color`: exit 0, no findings.
 - Not pushed, tagged, or opened as a PR; visibility on GitHub is unchanged.
+
+## Resolution (2026-09-26, second half: README)
+
+Covers the remaining rows from "False claims" > README.md, all of "Undocumented behavior", and the six README-specific rows of "Human review queue". README.md was also reorganized into nine sections (How it works; Quick start with the prebuilt image; Running from a clone and building from source; Configuration reference; How sensors decide; Home Assistant; Deploying, updating, and changing sensors; Operating; Development) so line numbers in this table are no longer meaningful; each row instead names the README section that carries the fix.
+
+### False claims > README.md
+
+| Original claim | Fix | Where in the new README |
+|---|---|---|
+| The next successful request "needs a new qualifying change" | An owed recheck, or once those run out a request after a new qualifying change, restores availability | How sensors decide > A malformed answer or a model failure; Home Assistant > Availability |
+| "stays unavailable ... until a new change triggers a request that succeeds" | Same | Operating > Troubleshooting > Model |
+| "`LUNAROUTE_API_KEY` by default" | "the example config names it `LUNAROUTE_API_KEY`, but any name works"; `api_key_env` has no default and is required | Configuration reference > Reference (`system.model`); Deploying, updating, and changing sensors > Rotating the LunaRoute key |
+| "sends the full-resolution frame ... to Djev" | Full resolution when that fits the byte budget, shrunk when it does not, usual for HD and 4K | How it works; How sensors decide > What Djev sees |
+| "Djev receives the full-resolution frame as a JPEG" | Same fix, same section | How sensors decide > What Djev sees |
+| `inference.failed`: "`message` for gateway errors" | `message` comes with every expected failure (HTTP status, transport error, image-fit failure); missing only for an unexpected exception | Operating > Logs (event table) |
+| "They remove everything they start, including the images" | Only the images they build (`docker compose down --rmi local` for the Home Assistant stack, `docker image rm` for the standalone container test, confirmed in `tests/e2e/test_home_assistant.py` and `tests/e2e/test_container_image.py`); pulled images and the build cache stay | Development |
+| `name`: "Name shown in Home Assistant" | Home Assistant prefixes the device name in the friendly name ("Djev Vision Sensors <name>"); the entity ID instead comes from the sensor ID via `default_entity_id` | Configuration reference > Reference (`sensors.<sensor_id>`); Home Assistant > Discovery and entity IDs |
+| `parse_error`: "`true` after a malformed answer" | Documented both: `false` on every valid judgment, `true` on every malformed one, always present | Home Assistant > Attributes |
+| `sensor.triggered`: "An evaluation starts" | "Movement starts an evaluation"; rechecks log `sensor.rechecking` instead, listed in the same table | Operating > Logs (event table) |
+
+### Undocumented behavior
+
+| Item | Where in the new README |
+|---|---|
+| Cameras do not start until the first MQTT connect; a down broker shows only `service.started` and repeated `mqtt.connect_failed` | Quick start > Confirm it works; Operating > Troubleshooting > MQTT |
+| RTSP opens and reads time out after 10 s | Operating > Troubleshooting > RTSP (named alongside the exception it raises, `ExitError`) |
+| `scripts/check` (not just `--live`) pulls `bluenviron/mediamtx:1` and `eclipse-mosquitto:2` | Development |
+| `sensor.cooldown_skipped`'s reason values, `cooldown` and `in_flight` | Operating > Logs (event table); How sensors decide > Triggering a look |
+| Some log fields are optional or typed differently than the table suggests (`errno` only when the exception has one, `rc` only for a paho error code, `mqtt.discovery_published.sensors` a count versus `service.started.sensors` a list) | Operating > Logs |
+| MQTT reconnects back off from 1 s, doubling to 120 s | Operating > Troubleshooting > MQTT |
+
+### Human review queue (README rows)
+
+| Item | Resolution |
+|---|---|
+| README 386: name the exception a PyAV timeout raises | `av.error.ExitError`. Read in the installed `av` 18.1.0: `container/core.py`'s `interrupt_cb` returns 1 once `time.monotonic()` passes `open_timeout`/`read_timeout`, which is FFmpeg's interrupt-callback contract for aborting the call with `AVERROR_EXIT`; `error.pxd`'s `_ffmpeg_specs` maps that code to a class named `ExitError` (no explicit name given, so built from the enum name), confirmed against `error.pyi`'s `class ExitError(FFmpegError)`. Documented in Operating > Troubleshooting > RTSP. |
+| README 272-275 and spec section 37: what Home Assistant shows after the service restarts | Confirmed correct as already written, against `tests/e2e/test_home_assistant.py::test_a_broker_restart_brings_back_discovery_and_availability_without_state`: state is never retained, so the entity keeps showing its last state (or unknown, after a broker/HA restart) until the next judgment, while discovery and availability come back at once. Kept, reworded, in Home Assistant > State after a restart. |
+| README 402-404: does the gateway's oversize error text fit the 200-character excerpt | Yes. The gateway's message, confirmed live against `gw.lunaroute.com` in the sibling `mm-decisions` repo's gotchas.md ("the request exceeds this model's max_input_tokens of 32768"), is 60 characters; comfortably inside `_ERROR_TEXT_LIMIT = 200` in `lunaroute_djev.py` however it is wrapped. Documented in Operating > Troubleshooting > Model. |
+| README 339-342: library warnings print as plain text, not JSON; gateway error excerpts could echo request content | Confirmed: `__main__.py`'s `_configure_logging` never calls `logging.captureWarnings`, so Python's `warnings.warn` still goes through `warnings.showwarning` to stderr as plain text, not through the JSON `log_event` path. Both notes added to Operating > Logs. |
+| gotchas.md deployment facts that cannot be checked from the repo | Not a README item; recorded as a standing caveat in the first-half resolution above. |
+| README 474-475 says "or secret store" | Removed: the repository's tracked `compose.override.yaml` sets `env_file: .env`, and Compose refuses to start without that file, so `.env` is mandatory for this setup, not one option among several. Fixed in Running from a clone and building from source; Deploying, updating, and changing sensors > Rotating the LunaRoute key. |
+| Neither doc states a minimum Home Assistant version for `default_entity_id` | Neither now does either; documented instead as tested on Home Assistant 2026.9.3, per `tests/e2e/test_home_assistant.py`'s assertions (entity ID `binary_sensor.discovered_scene` from `default_entity_id`, friendly name "Djev Vision Sensors Discovered Scene" from the device-name prefix). Home Assistant > Discovery and entity IDs. |
+
+### Behavior decision
+
+Per Doctor Biz: after a model failure, an owed recheck can restore availability (not only a fresh qualifying change). This already matched the code and the scheduler test added in the first-half resolution; the README now says so in How sensors decide > A malformed answer or a model failure and Home Assistant > Availability.
+
+### Verification
+
+- Re-ran the audit's pattern searches against the new README: `new change` (no hits), `full-resolution` (one hit, now conditional: "full resolution when that fits ... and shrunk when it does not"), `by default` (two hits, both unrelated to `LUNAROUTE_API_KEY`), and stale commit references (none; README never cited one).
+- Diffed the README's `config.example.yaml` block against the tracked file: identical, 72 lines each, `diff` exit 0. `config.example.yaml` itself was not changed.
+- Cross-checked every config key and default named in the README's reference tables against `djev_sensors/config.py`'s field declarations: all present, all defaults and bounds match.
+- `./scripts/check`: see the commit for output.
+
+### Not addressed
+
+Nothing from the assigned README scope was left open. The only pre-existing item still standing is the one already recorded above as out of scope: "gotchas.md deployment facts that cannot be checked from the repo," which names no README line and needs no doc change.

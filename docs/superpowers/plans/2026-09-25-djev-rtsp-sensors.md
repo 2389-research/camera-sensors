@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: README reordered for newcomers (what this is, getting started, how it works, System One) with two animated SVG diagrams made with the igor/diagramming skill (masters in docs/diagrams, portable exports in docs/images), on `wip/readme-animations`
-- Next: Doctor Biz picks a finishing option; GitHub's rendering of the SVGs is untested until pushed (fallback fonts checked locally)
+- Step: merge `wip/readme-animations` into `main` approved (finishing option 1): the newcomer-first README and its two animated diagrams
+- Next: none required; pushing main shows the README on GitHub (where the SVG rendering is still unseen) and rebuilds the image
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate; the repo has no license file, and making the repo itself public would expose internal hosts and IPs in gotchas.md and the plan
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally
@@ -26,6 +26,7 @@
 - Approved: "let's fix all the details. and make the sintructions super clear." (2026-09-26) — fix every audit finding and make the README instructions clear
 - Approved: "1" (2026-09-26) — finishing option 1 for `wip/docs-audit-fixes`, merge back to main locally
 - Approved: "yep. push." (2026-09-27) — merge `wip/public-image-docs` into main and push main
+- Approved: "1" (2026-09-27) — finishing option 1 for `wip/readme-animations`, merge back to main locally
 - Compactions: 0
 
 ## Global Constraints

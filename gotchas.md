@@ -96,6 +96,10 @@ On 2026-09-27 the Docker Compose service and the locally built image were rename
 
 PyAV 18.1.0 bundles FFmpeg 8.1.2 (libavformat 62), where `tls_verify` defaults to off: `libavformat/tls.h` takes its default from `FF_API_NO_DEFAULT_TLS_VERIFY`, which `libavformat/version_major.h` defines as `LIBAVFORMAT_VERSION_MAJOR < 63`. `djev_sensors/camera.py` passes only `rtsp_transport=tcp`, so `rtsps://` cameras connect today without a certificate check. The docs on ffmpeg.org already describe the coming default, "Enabled by default." Once a PyAV release bundles libavformat 63 or later, any `rtsps://` camera whose certificate does not chain to a trusted CA stops connecting. Before merging such an `av` bump, check `av.library_versions["libavformat"]` and choose between passing `tls_verify=0` and adding a CA-file option. (Read in FFmpeg's n8.1.2 source, 2026-09-27.)
 
+## Checking out an old commit can delete the local notes
+
+`.private-journal/`, `docs/superpowers/`, and `docs/audits/` were tracked until commit bb5279d and now live only on disk, ignored by git. Git treats ignored files as expendable: checking out a commit from before bb5279d silently overwrites them with that commit's versions, and moving forward past bb5279d again deletes them. On 2026-09-27 a switch to the old `main` and a fast-forward merge did exactly that, and `git restore --source=bb5279d^ --worktree -- <paths>` brought the committed versions back; edits made after bb5279d would have been gone for good. Read old files with `git show <rev>:<path>`, or copy these directories somewhere safe before checking out an older commit or starting a bisect.
+
 ## Keep private network details out of this repo
 
 The repository is meant to go public. Describe machines by role, such as "the home server", never by host name, LAN address, or SSH login. Plan docs, audit reports, and `.private-journal/` stay on disk but out of git, and `.gitignore` excludes them.

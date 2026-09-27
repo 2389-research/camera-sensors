@@ -93,3 +93,70 @@ All 26 config keys, defaults, and bounds match config.py, and the README's examp
 4. Fix the spec (sections 25, 35, 26, 8, 7) and the drift items.
 5. Align the two code comments.
 6. Re-run the pattern searches ("new change", "full-resolution", "by default"), re-diff the README example against `config.example.yaml`, and run `scripts/check`.
+
+## Resolution (2026-09-26, first half: everything but README)
+
+Covers implementation plan items 1, 3, 4, 5, and the non-README rows of "False claims" and all of "Spec drift". README fixes (plan item 2) are a separate pass; its rows are not covered here.
+
+### 1. Scheduler test pinning recheck recovery
+
+Added `test_a_recheck_restores_availability_after_a_model_failure` to `tests/unit/test_scheduler.py`: a `ModelError` on the first, movement-triggered look, then a valid judgment on a later below-threshold sample (an owed recheck). Asserts availability publishes `False` then `True`, and that the recheck's `attributes` publish has `trigger: "recheck"`. It passed on the first run with no production-code change, confirming recovery-by-recheck already matches spec section 19 ("the sensor becomes available again after the next successful Djev evaluation").
+
+### 3. gotchas.md
+
+- Line 13 (test.sh key): now names `b14cacd` as the only other commit to touch the file (it added `pipefail`), instead of saying no other commit touches it.
+- Line 5 (gateway limit): "rejects requests near 49 KB" -> "rejects requests at about 48 KB", the same figure README and spec.md use, backed by the measured 48,149-byte pass and 48,957-byte fail.
+- Read the rest of the file against `camera.py`, `mqtt/client.py`, `lunaroute_djev.py`, `state.py`, and the `Dockerfile`; found no further contradictions.
+
+### 4. docs/spec.md — false claims
+
+| Section | Change |
+|---|---|
+| 25 | Added `default_entity_id` to the example discovery payload, with a sentence tying it to section 40's `binary_sensor.someone_at_door`. |
+| 35 | Replaced the suggested project layout with the real one: `events.py`, `frames.py`, `scripts/check`, and tests split into `tests/unit`, `tests/integration`, `tests/e2e`. |
+| 26 | Moved `parse_error` into the main attributes example (it is always sent); `model_request_id` and `frame_age_ms` are now marked "Not implemented in v0.1". |
+| 8 | Reordered the pipeline diagram to grayscale, then resize, then blur, matching `frame_difference.py`. |
+| 7 | Reworded: the transmitted image is always JPEG-encoded; only whether it's resized first depends on whether it fits at full size. |
+
+### 4. docs/spec.md — spec drift
+
+| Item | Change |
+|---|---|
+| Sections 17, 31 | Added a note in each that implementations should compare `p + t <= 1.0`, not `p <= 1 - t`, pointing to `djev_sensors/state.py`. |
+| Section 5 | Added `recheck_count` / `recheck_interval_seconds` to both example sensors. |
+| Section 36 | Added `build: .`, `init: true`, and `stop_grace_period: 15s` to the compose example, matching `compose.yaml`. |
+| Section 33 | Listed all 22 events the code emits (confirmed by parsing every `log_event(` call site with `ast`), up from 16; added `service.started`, `service.stopped`, `camera.callback_failed`, `inference.discarded`, `mqtt.connect_failed`, `mqtt.publish_failed`. |
+| Section 28 | Rewrote the suggested runtime object to match `djev_sensors/state.py`'s actual `SensorRuntime` dataclass (`camera_available`/`model_available` instead of a single flag, `cooldown_started_at`, no `pending_frame`) and its `available` property. |
+| Section 1 | Changed its heading from `##` to `#`, matching every other section. |
+
+### 5. Code comments
+
+- `compose.yaml`: the shutdown-budget comment now says 3 s (hub) + 3 s (drain) + up to 5 s more (paho's connect timeout) ≈ 11 s, under the 15 s grace period — matching `app.py`'s own comment instead of the stale 3+3+2 figure.
+- `djev_sensors/models/lunaroute_djev.py` (class docstring, formerly lines 48-49): now says "the next qualifying change, or an owed recheck, retries naturally", not only the next qualifying change.
+
+### Not addressed in this pass (out of the assigned scope)
+
+**Undocumented behavior** (6 items) — none of these were in the assigned spec.md section list, so `docs/spec.md` does not yet document:
+
+1. Cameras don't start until the first MQTT connect.
+2. RTSP opens and reads time out after 10 s.
+3. `scripts/check` unconditionally pulls `bluenviron/mediamtx:1` and `eclipse-mosquitto:2`.
+4. `sensor.cooldown_skipped`'s reason values (`cooldown`, `in_flight`) aren't listed.
+5. Some log fields are optional or typed differently than the section 33 table suggests.
+6. MQTT reconnects back off from 1 s, doubling to 120 s.
+
+**Human review queue** (7 items) — six name a README line and belong to the README pass; the seventh ("gotchas.md deployment facts that cannot be checked from the repo") is not a documentation error to fix, just a standing caveat about facts this repo can't self-verify. None required a `spec.md` or `gotchas.md` change beyond section 4 and 3 above.
+
+**Verified true (highlights)** — no changes; nothing here was found false.
+
+### 5 (workflow). Docker image for people to use
+
+Added `.github/workflows/docker-image.yml` (new file, not present before). Builds the existing `Dockerfile` for `linux/amd64` and `linux/arm64` via Buildx + QEMU and publishes to `ghcr.io/2389-research/camera-sensors`, using the GitHub Actions cache (`type=gha`) and `docker/metadata-action` for tags and OCI labels (including the default `org.opencontainers.image.source` label that links the package back to this repo). `compose.yaml` is untouched and still builds from source (`build: .`), so the couch and office (aibox03) deployments are unaffected.
+
+- Triggers: `push` to `main`, `push` of `v*` tags, `pull_request`, and `workflow_dispatch`.
+- Tags: `latest` and `sha-<short-sha>` on push to `main` only (`enable={{is_default_branch}}`); `major.minor.patch`, `major.minor`, and `major` semver tags on `v*` tags only (metadata-action's `type=semver` is inherently tag-scoped).
+- Push happens for every event except `pull_request` (`push: ${{ github.event_name != 'pull_request' }}`), so PRs build both platforms without publishing; `workflow_dispatch` does push, since no instruction said otherwise and a manual run that can never publish seemed of little use — flagged as a judgment call.
+- Permissions: job-level `contents: read`, `packages: write`, using the workflow's own `GITHUB_TOKEN` (no PAT).
+- Actions and pinned majors, looked up with `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name` on 2026-09-26 rather than guessed: `actions/checkout@v7` (v7.0.1), `docker/setup-qemu-action@v4` (v4.4.0), `docker/setup-buildx-action@v4` (v4.4.1), `docker/login-action@v4` (v4.6.0), `docker/metadata-action@v6` (v6.2.0), `docker/build-push-action@v7` (v7.4.0).
+- Validated with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color`: exit 0, no findings.
+- Not pushed, tagged, or opened as a PR; visibility on GitHub is unchanged.

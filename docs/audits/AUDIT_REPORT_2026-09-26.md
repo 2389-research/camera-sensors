@@ -108,7 +108,7 @@ Added `test_a_recheck_restores_availability_after_a_model_failure` to `tests/uni
 - Line 5 (gateway limit): "rejects requests near 49 KB" -> "rejects requests at about 48 KB", the same figure README and spec.md use, backed by the measured 48,149-byte pass and 48,957-byte fail.
 - Read the rest of the file against `camera.py`, `mqtt/client.py`, `lunaroute_djev.py`, `state.py`, and the `Dockerfile`; found no further contradictions.
 
-### 4. docs/spec.md — false claims
+### 4. docs/spec.md: false claims
 
 | Section | Change |
 |---|---|
@@ -118,7 +118,7 @@ Added `test_a_recheck_restores_availability_after_a_model_failure` to `tests/uni
 | 8 | Reordered the pipeline diagram to grayscale, then resize, then blur, matching `frame_difference.py`. |
 | 7 | Reworded: the transmitted image is always JPEG-encoded; only whether it's resized first depends on whether it fits at full size. |
 
-### 4. docs/spec.md — spec drift
+### 4. docs/spec.md: spec drift
 
 | Item | Change |
 |---|---|
@@ -131,12 +131,12 @@ Added `test_a_recheck_restores_availability_after_a_model_failure` to `tests/uni
 
 ### 5. Code comments
 
-- `compose.yaml`: the shutdown-budget comment now says 3 s (hub) + 3 s (drain) + up to 5 s more (paho's connect timeout) ≈ 11 s, under the 15 s grace period — matching `app.py`'s own comment instead of the stale 3+3+2 figure.
+- `compose.yaml`: the shutdown-budget comment now says 3 s (hub) + 3 s (drain) + up to 5 s more (paho's connect timeout) ≈ 11 s, under the 15 s grace period: matching `app.py`'s own comment instead of the stale 3+3+2 figure.
 - `djev_sensors/models/lunaroute_djev.py` (class docstring, formerly lines 48-49): now says "the next qualifying change, or an owed recheck, retries naturally", not only the next qualifying change.
 
 ### Not addressed in this pass (out of the assigned scope)
 
-**Undocumented behavior** (6 items) — none of these were in the assigned spec.md section list, so `docs/spec.md` does not yet document:
+**Undocumented behavior** (6 items): none of these were in the assigned spec.md section list, so `docs/spec.md` does not yet document:
 
 1. Cameras don't start until the first MQTT connect.
 2. RTSP opens and reads time out after 10 s.
@@ -145,9 +145,9 @@ Added `test_a_recheck_restores_availability_after_a_model_failure` to `tests/uni
 5. Some log fields are optional or typed differently than the section 33 table suggests.
 6. MQTT reconnects back off from 1 s, doubling to 120 s.
 
-**Human review queue** (7 items) — six name a README line and belong to the README pass; the seventh ("gotchas.md deployment facts that cannot be checked from the repo") is not a documentation error to fix, just a standing caveat about facts this repo can't self-verify. None required a `spec.md` or `gotchas.md` change beyond section 4 and 3 above.
+**Human review queue** (7 items): six name a README line and belong to the README pass; the seventh ("gotchas.md deployment facts that cannot be checked from the repo") is not a documentation error to fix, just a standing caveat about facts this repo can't self-verify. None required a `spec.md` or `gotchas.md` change beyond section 4 and 3 above.
 
-**Verified true (highlights)** — no changes; nothing here was found false.
+**Verified true (highlights)**: no changes; nothing here was found false.
 
 ### 5 (workflow). Docker image for people to use
 
@@ -155,7 +155,7 @@ Added `.github/workflows/docker-image.yml` (new file, not present before). Build
 
 - Triggers: `push` to `main`, `push` of `v*` tags, `pull_request`, and `workflow_dispatch`.
 - Tags: `latest` and `sha-<short-sha>` on push to `main` only (`enable={{is_default_branch}}`); `major.minor.patch`, `major.minor`, and `major` semver tags on `v*` tags only (metadata-action's `type=semver` is inherently tag-scoped).
-- Push happens for every event except `pull_request` (`push: ${{ github.event_name != 'pull_request' }}`), so PRs build both platforms without publishing; `workflow_dispatch` does push, since no instruction said otherwise and a manual run that can never publish seemed of little use — flagged as a judgment call.
+- Push happens for every event except `pull_request` (`push: ${{ github.event_name != 'pull_request' }}`), so PRs build both platforms without publishing; `workflow_dispatch` does push, since no instruction said otherwise and a manual run that can never publish seemed of little use: flagged as a judgment call.
 - Permissions: job-level `contents: read`, `packages: write`, using the workflow's own `GITHUB_TOKEN` (no PAT).
 - Actions and pinned majors, looked up with `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name` on 2026-09-26 rather than guessed: `actions/checkout@v7` (v7.0.1), `docker/setup-qemu-action@v4` (v4.4.0), `docker/setup-buildx-action@v4` (v4.4.1), `docker/login-action@v4` (v4.6.0), `docker/metadata-action@v6` (v6.2.0), `docker/build-push-action@v7` (v7.4.0).
 - Validated with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color`: exit 0, no findings.

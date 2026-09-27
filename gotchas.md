@@ -70,7 +70,7 @@ On 2026-09-26, `docker compose build --no-cache` downloaded every large wheel ag
 
 ## paho-mqtt 2.1: which callback sees a failed connect
 
-Read in paho 2.1.0's `client.py`. `on_connect_fail` fires only when `reconnect()` raises `OSError`, meaning the TCP connect itself failed. A connection the peer closes before any CONNACK reaches only `on_disconnect`, with reason 128 "Unspecified error" (`_loop_rc_handle` after `MQTT_ERR_CONN_LOST`), and one that gets no CONNACK within the 60 s keepalive gets 141 "Keep alive timeout". A refused CONNACK calls `on_connect` with the refusal, then `on_disconnect` with 128. Our own `disconnect()` reports reason 0, which is not a failure. `MqttPublisher` logs `mqtt.connect_failed` once for each of these paths.
+Read in paho 2.1.0's `client.py`. `on_connect_fail` fires only when `reconnect()` raises `OSError`, meaning the TCP connect itself failed. A connection the peer closes before any CONNACK reaches only `on_disconnect`, with reason 128 "Unspecified error" (`_loop_rc_handle` after `MQTT_ERR_CONN_LOST`), and one that gets no CONNACK within the 60 s keepalive gets 141 "Keep alive timeout". A refused CONNACK calls `on_connect` with the refusal, then `on_disconnect` with 128. The service's own `disconnect()` reports reason 0, which is not a failure. `MqttPublisher` logs `mqtt.connect_failed` once for each of these paths.
 
 ## math.isfinite raises OverflowError for a huge int
 

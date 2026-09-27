@@ -20,4 +20,7 @@ Report anything that could expose those secrets or frames, such as:
   Assistant attributes, error output, or the Docker image
 - camera frames going anywhere other than the LunaRoute gateway
 
+The README's [Limitations](README.md#limitations) section lists known gaps,
+such as the unchecked camera certificates; those need no report.
+
 Fixes land on `main` and in the image's `latest` tag.

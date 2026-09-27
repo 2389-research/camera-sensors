@@ -55,6 +55,7 @@ identifiers, so changing them would turn every sensor into a new entity.
 - [Home Assistant](#home-assistant)
 - [Deploying, updating, and changing sensors](#deploying-updating-and-changing-sensors)
 - [Operating](#operating)
+- [Limitations](#limitations)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -936,6 +937,27 @@ so logs cannot supply them.
 - `could not read config file /app/config.yaml: [Errno 13] Permission denied`:
   the container's user, UID 10001, cannot read the file. Run
   `chmod 644 config.yaml`.
+
+## Limitations
+
+- Every look sends a JPEG of the frame to LunaRoute's gateway for Djev to
+  judge, so pictures from your cameras leave your network. The service works
+  with no other model.
+- For an `rtsps://` camera, the FFmpeg inside PyAV encrypts the stream but
+  does not check the camera's certificate, so it would not notice a device on
+  your network posing as the camera.
+- Djev sees a shrunken frame, usually about 768x432 from an HD or 4K camera,
+  so it can miss small or distant details. See
+  [What Djev sees](#what-djev-sees).
+- A failed look marks the sensor unavailable until the next successful one,
+  so a slow gateway can make sensors flicker in Home Assistant. See
+  [A malformed answer or a model failure](#a-malformed-answer-or-a-model-failure).
+- Each camera decodes all the time, and one 4K stream measured about half a
+  CPU core. Djev sees about 768x432 either way, so a camera's 720p channel
+  works as well for far less CPU.
+- The amd64 image needs an x86-64-v2 CPU. NumPy 2.5 stops at import on older
+  processors and on generic virtual CPU models, so give a VM its host's CPU
+  type.
 
 ## Contributing
 

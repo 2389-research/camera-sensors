@@ -75,7 +75,7 @@ You need:
 
 ### 1. Pull the image
 
-The image is public, so no login is needed:
+The image is public, so you do not need to log in:
 
 ```sh
 docker pull ghcr.io/2389-research/camera-sensors:latest
@@ -85,7 +85,7 @@ docker pull ghcr.io/2389-research/camera-sensors:latest
 pin a deployment to one exact build, use a `sha-<commit>` tag instead;
 [Image tags](#image-tags) lists the options.
 
-What the image expects from you:
+What the image does and needs:
 
 - It runs `python -m djev_sensors --config /app/config.yaml` as an
   unprivileged user, UID 10001, and exposes no ports.
@@ -202,14 +202,14 @@ In Home Assistant, open Settings > Devices & services > MQTT and find the
 `binary_sensor.car_in_garage`, shown as unavailable until its camera
 connects, then unknown until Djev's first confident judgment.
 
-From here, [Configuration reference](#configuration-reference) lists every
-key, [Writing good prompts](#writing-good-prompts) helps with the questions,
-and [Adding, renaming, and removing sensors](#adding-renaming-and-removing-sensors)
-covers growing the setup.
+[Configuration reference](#configuration-reference) lists every key.
+[Writing good prompts](#writing-good-prompts) covers the questions, and
+[Adding, renaming, and removing sensors](#adding-renaming-and-removing-sensors)
+covers later changes to the sensor list.
 
 ## How does it work?
 
-The path one frame takes:
+Each frame takes this path:
 
 1. The service decodes each distinct RTSP URL once, however many sensors
    watch it, and samples each camera at its configured frame rate.
@@ -237,16 +237,15 @@ starts another request each time the cooldown expires.
 
 <img src="docs/images/system-one.svg" width="900" alt="Animated diagram of a System One model. It reads a text state and answers typed questions: a Noul question returns the probability of yes, a Choice question returns one option from a defined set, and a Score question returns a position on ordered levels. The answers are typed values and probabilities instead of prose, and your code turns them into actions.">
 
-Most AI models you have met write prose. Djev does not. It is a System One
-model, and
+Most AI models write prose; Djev, a System One model, does not.
 [TypeSafe's System One documentation](https://docs.typesafe.ai/concepts/system-one),
-which describes this class of model, puts it plainly: "System One models
+which describes this class of model, says: "System One models
 make fast, structured decisions for software." "A System One model
 evaluates a state and returns typed answers and probabilities." They "do
 not write replies, produce code, or generate explanations of their
 reasoning."
 
-Two ideas carry the whole thing:
+Two ideas define the model:
 
 - The **state** is the input. TypeSafe's docs describe it as text: a string,
   a JSON object, or a list of strings, such as a support ticket with its
@@ -282,15 +281,15 @@ number into `ON`, `OFF`, or no change.
 
 TypeSafe's docs describe System One input as text, and this service sends a
 picture. That works because LunaRoute's `djev` endpoint accepts an image
-inside a question's instructions. The route is specific to LunaRoute, and it
-was verified against the live gateway on 2026-09-24 and 25, in the same
-probes that measured the byte budget in [What Djev sees](#what-djev-sees).
+inside a question's instructions. The route is specific to LunaRoute; the
+live probes of 2026-09-24 and 25 that measured the byte budget in
+[What Djev sees](#what-djev-sees) also confirmed it against the gateway.
 Other System One models, and other gateways, may take text only.
 
-To see typed answers with your own eyes, run the repository's `test.sh` with
-a key in `LUNAROUTE_API_KEY`. It needs `curl` and `python3`. It sends
-LunaRoute a text-only state, a sample support ticket, with one Noul, two
-Choice, and one Score question, and prints the reply.
+To see typed answers directly, run the repository's `test.sh` with a key in
+`LUNAROUTE_API_KEY`. It needs `curl` and `python3`. It sends LunaRoute a
+text-only state, a sample support ticket, with one Noul, two Choice, and one
+Score question, and prints the reply.
 
 ## Running from a clone and building from source
 
@@ -510,10 +509,9 @@ variables instead, through `api_key_env`, `password_env`, and `${VAR}`
 tokens inside camera URLs. The service enforces this by refusing a literal
 `password` under `mqtt`, a literal `api_key` under `model`, or a literal
 password inside a camera URL, and exits with status 2 naming the problem.
-Keeping secrets out of the file means a `config.yaml` copied into a bug
-report, committed by accident, or baked into a backup carries no live
-credential; the environment is the one place a secret has to be handled on
-purpose.
+A `config.yaml` committed by accident or pasted into a bug report therefore
+carries no live credential; the environment is the only place that needs to
+hold a secret.
 
 A camera URL can come whole from a variable (`rtsp: ${GARAGE_RTSP_URL}`),
 or keep its password in one while the rest is written out:
@@ -534,7 +532,7 @@ A few practices make sensors more reliable:
   rather than an exact count.
 - Give a sensor whose answer changes slowly, such as occupancy over a whole
   afternoon, a longer `cooldown_seconds` and a smaller `recheck_count`, so
-  it is not re-asked far more often than its answer could plausibly change.
+  it is not asked again far more often than its answer can change.
 - Watch a new sensor's `true_probability` and state for its first day, and
   reword its prompt if borderline frames keep landing near the threshold.
 
@@ -542,17 +540,17 @@ A few practices make sensors more reliable:
 
 ### Sampling and the change score
 
-Each camera decodes continuously but is only sampled at its configured
-`fps` (once a second unless you change it). Every sampled frame is reduced
-to a small grayscale copy: converted to grayscale, resized to
-`change_detection.width` pixels wide (aspect ratio kept), and, unless `blur`
-is 0, smoothed with a Gaussian blur. That copy is compared, pixel by pixel,
-against the same reduction of the previous sampled frame, whether or not
-that previous frame triggered a sensor: a pixel counts as changed when it
-moves by at least `pixel_delta_threshold`, and the change score is the
-percentage of pixels that changed. The first sample after startup or a
-reconnect has nothing to compare against, so it only becomes the new
-baseline.
+Each camera decodes continuously, but the service samples it only at its
+configured `fps` (once a second unless you change it). It reduces every
+sampled frame to a small grayscale copy: it converts the frame to grayscale,
+resizes it to `change_detection.width` pixels wide (aspect ratio kept), and,
+unless `blur` is 0, smooths it with a Gaussian blur. It then compares that
+copy, pixel by pixel, with the same reduction of the previous sampled frame,
+whether or not that previous frame triggered a sensor: a pixel counts as
+changed when it moves by at least `pixel_delta_threshold`, and the change
+score is the percentage of pixels that changed. The first sample after
+startup or a reconnect has nothing to compare against, so it only becomes
+the new baseline.
 
 ### Triggering a look
 
@@ -563,10 +561,10 @@ hold:
 - its `cooldown_seconds` have passed since its last request started, and
 - it has no request in flight.
 
-A qualifying change that arrives during the cooldown or while a request is
-running is logged as `sensor.cooldown_skipped` (`reason: cooldown` or
-`reason: in_flight`) and otherwise ignored, except that it still resets the
-sensor's rechecks.
+The service logs a qualifying change that arrives during the cooldown or
+while a request is running as `sensor.cooldown_skipped` (`reason: cooldown`
+or `reason: in_flight`) and otherwise ignores it, except that the change
+still resets the sensor's rechecks.
 
 ### Rechecks after movement
 
@@ -576,16 +574,15 @@ does not itself qualify as a change is offered as a recheck: once at least
 `max(recheck_interval_seconds, cooldown_seconds)` seconds have passed since
 the last request started, and no request is in flight, the service looks at
 that newest frame, logs `sensor.rechecking`, and counts down one recheck.
-This is how a scene that changes once and then holds still still gets
-judged again a few seconds later, without waiting for more movement. New
-movement restores the count to `recheck_count`; a camera outage clears any
-rechecks still owed.
+So a scene that changes once and then holds still is judged again a few
+seconds later, without waiting for more movement. New movement restores the
+count to `recheck_count`; a camera outage clears any rechecks still owed.
 
 ### What Djev sees
 
 Frames stay in memory at the camera's resolution; the service writes none
-to disk. Djev is sent a JPEG of the source-resolution frame, inside a JSON
-request, shrunk when it needs to be to fit LunaRoute's byte budget.
+to disk. It sends Djev a JPEG of the source-resolution frame inside a JSON
+request, shrunk when it must be to fit LunaRoute's byte budget.
 
 LunaRoute counts the base64 image against Djev's 32,768 input tokens, at
 about 1.5 bytes per token. In live probes on 2026-09-24 and 25, a request of
@@ -600,11 +597,11 @@ about 1.5 bytes per token. In live probes on 2026-09-24 and 25, a request of
 3. It sends the first body that fits, which is the largest fitted JPEG.
    When nothing fits, the request fails like any model failure.
 
-A 1080p or 4K frame is rarely small enough at full size; in practice the
-fitted image usually lands around 768x432. `sent_width` and `sent_height`,
-published in the sensor's attributes, show what Djev actually got. The
-limit was measured, not published, and `scripts/check --live` sends only
-small images, so it does not recheck the limit.
+A 1080p or 4K frame is rarely small enough at full size; the fitted image
+usually lands around 768x432. `sent_width` and `sent_height`, published in
+the sensor's attributes, show what Djev received. The limit comes from
+measurement, not from a published figure, and `scripts/check --live` sends
+only small images, so it does not recheck the limit.
 
 ### From a probability to a state
 
@@ -624,23 +621,24 @@ a later judgment falls outside the band.
 
 ### A malformed answer or a model failure
 
-Two different things can go wrong with a look, and the service treats them
-differently:
+Two things can go wrong with a look, and the service treats them
+differently.
 
-- **A malformed answer.** Djev's response parses as JSON but does not carry
-  a usable probability (missing, non-numeric, out of `[0, 1]`, or not
-  finite). The service logs `inference.invalid_response` and publishes
-  `OFF` every time, with `parse_error: true` in the attributes and no
-  `true_probability`, `latency_ms`, `sent_width`, or `sent_height`. The
-  sensor stays available: a malformed answer is still a completed request.
-- **A model failure.** The request times out, fails at the transport or
-  HTTP level, or the frame cannot fit the byte budget. The service logs
-  `inference.failed` and does not publish a state at all, so the sensor
-  keeps whatever `ON`/`OFF` it last had. Instead, it marks the sensor
-  unavailable (see [Availability](#availability)). That unavailability
-  lifts at the next look that completes successfully, which can be a fresh
-  qualifying change or one of the sensor's already-owed rechecks; a failure
-  does not cancel the rechecks a sensor still owes.
+A malformed answer is a response from Djev that parses as JSON but does not
+carry a usable probability (missing, non-numeric, out of `[0, 1]`, or not
+finite). The service logs `inference.invalid_response` and publishes `OFF`
+every time, with `parse_error: true` in the attributes and no
+`true_probability`, `latency_ms`, `sent_width`, or `sent_height`. The sensor
+stays available: a malformed answer is still a completed request.
+
+A model failure is a request that times out, fails at the transport or HTTP
+level, or has a frame that cannot fit the byte budget. The service logs
+`inference.failed` and publishes no state, so the sensor keeps whatever
+`ON`/`OFF` it last had. Instead, it marks the sensor unavailable (see
+[Availability](#availability)). That unavailability lifts at the next look
+that completes successfully, which can be a fresh qualifying change or one
+of the sensor's already-owed rechecks; a failure does not cancel the
+rechecks a sensor still owes.
 
 ## Home Assistant
 
@@ -808,10 +806,9 @@ Logs never hold images, request bodies, keys, or camera URLs, and camera
 errors show only the exception class and errno. A gateway error's `message`
 is whatever text the gateway returned, cut to 200 characters; it names the
 problem (as in "the request exceeds this model's max_input_tokens of
-32768"), but since it comes from the gateway's own response text, it could
-in principle echo something back from what was sent. Warnings a library
-prints on its own, such as a `DeprecationWarning`, appear as plain text on
-stderr, not as JSON.
+32768"), but because it is the gateway's own response text, it may echo
+part of what was sent. Warnings a library prints on its own, such as a
+`DeprecationWarning`, appear as plain text on stderr, not as JSON.
 
 | Event | Fields | When |
 |---|---|---|
@@ -898,9 +895,9 @@ so logs cannot supply them.
 - The service does not open any camera or send any model request until its
   first successful MQTT connect. While the broker is unreachable, the logs
   show only `service.started` followed by repeated `mqtt.connect_failed`
-  lines, nothing about cameras at all. Paho retries on its own, waiting 1
-  second after the first failed attempt and doubling, up to 120 seconds,
-  between later ones; there is nothing to restart, only the broker to fix.
+  lines, and no camera events. Paho retries on its own, waiting 1 second
+  after the first failed attempt and doubling, up to 120 seconds, between
+  later ones, so the service needs no restart; fix the broker.
 - No entities in Home Assistant: its MQTT integration needs discovery on and
   the same `discovery_prefix`. Look for the retained configs with
   `mosquitto_sub -h <broker> -t 'homeassistant/binary_sensor/djev_sensors/#' -v`.
@@ -928,7 +925,7 @@ so logs cannot supply them.
 
 ## Contributing
 
-Bug reports, questions, and pull requests are all welcome. If you are not
+Bug reports, questions, and pull requests are welcome. If you are not
 sure whether a change fits, open an issue first and describe the problem.
 
 ### Set up
@@ -951,7 +948,7 @@ uv sync
 | `tests/integration/` | Tests against real MediaMTX and Mosquitto containers, the whole pipeline fed scripted frames, a local HTTP stand-in for LunaRoute, the command line, and `test.sh`. |
 | `tests/e2e/` | Tests that build the image, drive a fresh Home Assistant, and probe the live LunaRoute gateway. |
 | `docs/spec.md` | The design spec. Code comments cite its sections, as in "spec section 14". |
-| `gotchas.md` | Facts learned the hard way about the libraries, the gateway, and the Docker engines this has run on. Read it before touching those parts. |
+| `gotchas.md` | Facts about the libraries, the gateway, and the Docker engines this has run on, each learned from something that broke. Read it before touching those parts. |
 | `config.example.yaml` | The example config. This README's copy must stay identical to it. |
 | `test.sh` | The text-only LunaRoute smoke script. |
 
@@ -1005,8 +1002,8 @@ any other argument.
 1. Fork the repository and make your change on a branch.
 2. Add or update a test that shows the change. If the change alters
    behavior this README or `docs/spec.md` describes, update them in the
-   same pull request; the README has been checked against the code, claim
-   by claim, and should stay that way.
+   same pull request; every claim in the README matches the code, and your
+   pull request must keep it that way.
 3. Run `scripts/check` and make sure it ends with `All checks passed.`.
 4. Open a pull request that says what changed and why. The repository's
    GitHub workflow builds the Docker image for both platforms on every pull

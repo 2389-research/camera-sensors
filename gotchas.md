@@ -92,6 +92,10 @@ The office UniFi Protect streams are mostly 4K, and decoding one costs about hal
 
 On 2026-09-27 the Docker Compose service and the locally built image were renamed from `djev-sensors` to `camera-sensors`. Deployments started before the rename still run the old container, `camera-sensors-djev-sensors-1`. Their first redeploy of newer code must run `docker compose up -d --build --remove-orphans` once. Without `--remove-orphans` the old container keeps running beside the new one, and because both use the MQTT client ID `djev-sensors`, the broker disconnects them from each other over and over. The MQTT topic prefix, the client ID, and the Home Assistant device and entity IDs did not change, so existing entities carry over.
 
+## FFmpeg will start verifying camera certificates at libavformat 63
+
+PyAV 18.1.0 bundles FFmpeg 8.1.2 (libavformat 62), where `tls_verify` defaults to off: `libavformat/tls.h` takes its default from `FF_API_NO_DEFAULT_TLS_VERIFY`, which `libavformat/version_major.h` defines as `LIBAVFORMAT_VERSION_MAJOR < 63`. `djev_sensors/camera.py` passes only `rtsp_transport=tcp`, so `rtsps://` cameras connect today without a certificate check. The docs on ffmpeg.org already describe the coming default, "Enabled by default." Once a PyAV release bundles libavformat 63 or later, any `rtsps://` camera whose certificate does not chain to a trusted CA stops connecting. Before merging such an `av` bump, check `av.library_versions["libavformat"]` and choose between passing `tls_verify=0` and adding a CA-file option. (Read in FFmpeg's n8.1.2 source, 2026-09-27.)
+
 ## Keep private network details out of this repo
 
 The repository is meant to go public. Describe machines by role, such as "the home server", never by host name, LAN address, or SSH login. Plan docs, audit reports, and `.private-journal/` stay on disk but out of git, and `.gitignore` excludes them.

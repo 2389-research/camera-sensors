@@ -11,8 +11,8 @@
 **Spec:** `docs/spec.md`. Doctor Biz approved transport resizing on 2026-09-25 because the measured LunaRoute request cap makes unconditional full-resolution delivery impossible.
 
 ## Now
-- Step: rename the project to camera-sensors (docs, Compose service, local image tag, pyproject name, test stack names), keeping the MQTT topic prefix and client ID defaults, the Home Assistant device name and IDs, and the Python package, on `wip/rename-camera-sensors`
-- Next: verify (scripts/check, compose build, model-free e2e), then the finishing options; redeploys after this need `docker compose up -d --remove-orphans` once
+- Step: project renamed to camera-sensors on `wip/rename-camera-sensors` (Compose service, local image, pyproject, test stacks, docs); MQTT defaults, Home Assistant IDs, and the Python package unchanged; `scripts/check` and model-free e2e green
+- Next: Doctor Biz picks a finishing option; the first redeploy of docker-host and aibox03 after this needs `docker compose up -d --build --remove-orphans`
 - Open: front yard change threshold (5% proposed); whether one model timeout should mark a sensor unavailable (spec section 19); the office cameras could use UniFi's 720p channels; this service does not verify the UniFi TLS certificate; the repo has no license file, and making the repo itself public would expose internal hosts and IPs in gotchas.md and the plan
 - Approved: "lets use subagents to build this project. it has been planned with superpowers" (2026-09-25) — execute this plan with subagent-driven-development
 - Approved: "1" (2026-09-25) — finishing option 1, merge back to main locally

@@ -1,0 +1,35 @@
+# ABOUTME: Runs scripts/check (lint, format check, strict mypy, unit and integration tests)
+# ABOUTME: on pushes to main and on pull requests; the live end-to-end tests need a key and stay local.
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: scripts/check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.9.25"
+
+      - name: Install FFmpeg, which the RTSP tests publish with
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install the locked dependencies
+        run: uv sync --locked
+
+      - name: Run the checks
+        run: scripts/check

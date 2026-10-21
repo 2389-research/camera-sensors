@@ -3,7 +3,7 @@
 
 # The build stage syncs the virtualenv with uv. The runtime stage below copies
 # only the virtualenv and the sources, so uv never reaches the final image.
-FROM python:3.12-slim AS build
+FROM python:3.14-slim AS build
 COPY --from=ghcr.io/astral-sh/uv:0.9.25 /uv /bin/
 # The virtualenv's python links to this image's interpreter, which the runtime
 # stage has at the same path, so uv must never download an interpreter of its own.
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
 
 # The same base image as the build stage, so the virtualenv's interpreter link
 # resolves here too.
-FROM python:3.12-slim
+FROM python:3.14-slim
 WORKDIR /app
 # The service needs no privileges, so it runs as an unprivileged system user.
 RUN useradd --system --uid 10001 djev
